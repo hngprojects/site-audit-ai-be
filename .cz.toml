@@ -1,0 +1,17 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+tag_format = "v$version"
+update_changelog_on_bump = false
+
+[tool.commitizen.change_type_map]
+build = "Build"
+chore = "Chores"
+docs = "Documentation"
+feat = "Features"
+fix = "Bug Fixes"
+perf = "Performance"
+refactor = "Refactors"
+revert = "Reverts"
+test = "Tests"
+ci = "CI"

@@ -1,0 +1,32 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.5
+    hooks:
+      - id: ruff
+        name: Ruff Lint
+        args: [--fix]
+      - id: ruff-format
+        name: Ruff Format
+
+  - repo: local
+    hooks:
+      - id: pytest-before-commit
+        name: Run pytest before commit
+        entry: python -m pytest
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: commitizen-check
+        name: Check conventional commit message (Commitizen)
+        entry: cz check --commit-msg-file
+        language: system
+        stages: [commit-msg]
+        pass_filenames: true
+
+      - id: check-branch-name
+        name: Check branch naming convention before push
+        entry: bash scripts/check_branch_name.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,9 +8,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = True
 
-    database_url: str = (
-        "postgresql+psycopg2://postgres:postgres@localhost:5432/sitemate_ai"
-    )
+    database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/sitemate_ai"
 
     model_config = SettingsConfigDict(
         env_file=".env",

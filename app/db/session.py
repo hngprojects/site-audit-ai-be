@@ -1,7 +1,7 @@
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
 
@@ -13,7 +13,6 @@ engine = create_engine(
     future=True,
 )
 
-# 👇 Session factory
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
