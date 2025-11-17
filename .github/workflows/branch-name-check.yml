@@ -27,7 +27,7 @@ jobs:
 
           # Enforce ClickUp-style ID in feature branches
           # e.g., feature/ABC-123-add-scan-endpoint
-          if echo "$BRANCH" | grep -Eq '^(feature|fix|chore|hotfix|bugfix)/[A-Za-z]+-[0-9]+(-[a-z0-9-]*)?$'; then
+          if echo "$BRANCH" | grep -Eq '^(feature|fix|chore|hotfix|bugfix|refactor)/[A-Za-z]+-[0-9]+(-[a-z0-9-]*)?$'; then
             echo "✅ Valid feature branch with ClickUp ID: $BRANCH"
             exit 0
           fi
