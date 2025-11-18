@@ -8,13 +8,8 @@ from app.features.auth.schemas import (
     ResetPasswordRequest,
     AuthResponse
 )
-from app.features.auth.services import (
-    generate_reset_token,
-    send_reset_email,
-    verify_reset_token,
-    update_password,
-    clear_reset_token
-)
+from app.features.auth.services.auth_service import AuthService
+from app.platform.services.email import send_password_reset_email
 
 router = APIRouter()
 
@@ -26,11 +21,13 @@ async def forgot_password(
 ):
     """Request password reset - generates token and sends email"""
     try:
+        auth_service = AuthService(db)
+
         # Generate reset token with 1-minute expiration
-        token, expires_at = await generate_reset_token(db, request.email)
+        token, expires_at = await auth_service.generate_reset_token(request.email)
 
         # Send reset email in background
-        background_tasks.add_task(send_reset_email, request.email, token)
+        background_tasks.add_task(send_password_reset_email, request.email, token)
 
         return api_response(
             message="Password reset email sent. Link expires in 1 minute.",
@@ -50,11 +47,13 @@ async def resend_reset_token(
 ):
     """Resend reset token if previous one expired"""
     try:
+        auth_service = AuthService(db)
+
         # Generate new reset token
-        token, expires_at = await generate_reset_token(db, request.email)
+        token, expires_at = await auth_service.generate_reset_token(request.email)
 
         # Send new reset email
-        background_tasks.add_task(send_reset_email, request.email, token)
+        background_tasks.add_task(send_password_reset_email, request.email, token)
 
         return api_response(
             message="New password reset email sent. Link expires in 1 minute.",
@@ -73,14 +72,13 @@ async def reset_password(
 ):
     """Reset password using valid token"""
     try:
+        auth_service = AuthService(db)
+
         # Verify token is valid and not expired
-        await verify_reset_token(db, request.email, request.token)
+        await auth_service.verify_reset_token(request.email, request.token)
 
         # Update password (this will also clear the reset token)
-        await update_password(db, request.email, request.new_password)
-
-        # Clear reset token
-        await clear_reset_token(db, request.email)
+        await auth_service.update_password(request.email, request.new_password)
 
         return api_response(
             message="Password reset successfully",

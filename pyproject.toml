@@ -5,15 +5,18 @@ description = "Sitelytics Backend Service"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "aiosqlite==0.20.0",
     "annotated-doc==0.0.4",
     "annotated-types==0.7.0",
     "anyio==4.11.0",
     "bcrypt==4.1.2",
     "click==8.3.1",
+    "email-validator==2.1.1",
     "fastapi==0.121.2",
     "greenlet==3.2.4",
     "h11==0.16.0",
     "idna==3.11",
+    "PyJWT==2.8.0",
     "pydantic==2.12.4",
     "pydantic-core==2.41.5",
     "python-dotenv==1.2.1",
