@@ -5,7 +5,7 @@ from app.features.waitlist.schemas.waitlist import WaitlistIn, WaitlistOut, Wait
 from app.features.waitlist.services.waitlist import add_to_waitlist,get_waitlist_stats
 from app.features.waitlist.utils.emailer import send_thank_you_email
 from fastapi.responses import JSONResponse
-router = APIRouter()
+router = APIRouter( tags=["Waitlist"])
 
 @router.post("/waitlist", response_model=WaitlistResponse)
 async def join_waitlist(
