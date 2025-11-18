@@ -1,16 +1,16 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-from app.features.waitlist.models.waitlist import Base
-
-from app.platform.db.base import Base
-from app.features.waitlist.models.waitlist import * 
-#import your model bases here for alembic
-
-from alembic import context
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
+
+# import your model bases here for alembic
+from alembic import context
+from app.features.waitlist.models.waitlist import *
+from app.features.auth.models.users import *
+from app.features.auth.models.oauth import *
+from app.features.waitlist.models.waitlist import Base
+from app.platform.db.base import Base, BaseModel
 
 load_dotenv()
 
@@ -76,9 +76,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
