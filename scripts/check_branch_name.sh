@@ -15,17 +15,18 @@ if echo "$BRANCH_NAME" | grep -Eq '^(main|master|dev(elop)?|staging|hotfix|relea
   exit 0
 fi
 
-# Enforce ClickUp-style ticket ID in feature branches
-# Example: feature/ABC-123-add-something
-if echo "$BRANCH_NAME" | grep -Eq '^(feature|fix|chore|hotfix|bugfix)/[A-Za-z]+-[0-9]+(-[a-z0-9-]*)?$'; then
-  echo "✅ Valid feature branch with ClickUp ID: $BRANCH_NAME"
+# Enforce simple feature branch naming, e.g. feature/what-i-am-working-on
+if echo "$BRANCH_NAME" | grep -Eq '^(feature|fix|chore|hotfix|bugfix|refactor)/[a-z0-9-]+$'; then
+  echo "✅ Valid feature branch name: $BRANCH_NAME"
   exit 0
 fi
 
 echo "❌ Invalid branch name: $BRANCH_NAME"
 echo "Branch name must match one of the following:"
 echo "  - main, master, dev, develop, staging, hotfix, release"
-echo "  - feature/<TICKET-ID>-slug (e.g., feature/ABC-123-add-scan-endpoint)"
-echo "  - fix/<TICKET-ID>-slug"
-echo "  - chore/<TICKET-ID>-slug"
+echo "  - <type>/<slug>, e.g.:"
+echo "      feature/setup-fastapi-backend"
+echo "      fix/health-endpoint-timeout"
+echo "      chore/update-readme"
+echo "      refactor/split-db-layer"
 exit 1
