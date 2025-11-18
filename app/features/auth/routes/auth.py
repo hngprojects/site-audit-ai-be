@@ -65,7 +65,6 @@ async def signup(
     "/change-password",
     response_model=dict,
     summary="Change password for authenticated user",
-    description="Update password while logged in by verifying current password"
 )
 async def change_password(
     request: ChangePasswordRequest,
