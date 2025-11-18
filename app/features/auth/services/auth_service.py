@@ -249,8 +249,6 @@ class AuthService:
         await self.db.refresh(user)
 
     async def clear_reset_token(self, email: str) -> None:
-        """Clear the reset token (called after successful password reset)"""
-        # Find user by email
         result = await self.db.execute(
             select(User).where(User.email == email.lower())
         )
@@ -260,3 +258,31 @@ class AuthService:
             user.password_reset_token = None
             user.password_reset_expires_at = None
             await self.db.commit()
+
+    async def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        result = await self.db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        if not verify_password(current_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+
+        if current_password == new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current password"
+            )
+
+        user.password_hash = hash_password(new_password)
+        await self.db.commit()
+        await self.db.refresh(user)
