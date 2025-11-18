@@ -13,6 +13,7 @@ from app.platform.db.base import Base
 # Then import all models for Alembic to detect them
 from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
+from app.features.auth.models.oauth import OAuthAccount
 
 load_dotenv()
 
@@ -81,9 +82,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
