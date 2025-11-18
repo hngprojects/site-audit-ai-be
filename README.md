@@ -62,21 +62,44 @@ git clone https://github.com/hngprojects/site-audit-ai-BE.git
 cd site-audit-ai-BE
 ```
 
-### **2. Create and Activate a Virtual Environment**
+### **2. Choose Your Installation Method**
 
+#### **🚀 Option 1: Using uv (Recommended)**
+
+[**uv**](https://docs.astral.sh/uv/) is an extremely fast Python package installer and resolver, written in Rust. It's 10-100x faster than pip and provides a better dependency management experience.
+
+**Install uv (if not already installed):**
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or with pip (not recommended, but available)
+pip install uv
+```
+
+**Install dependencies with uv:**
+```bash
+uv sync
+```
+
+#### **📦 Option 2: Using pip (Traditional)**
+
+**Create and activate a virtual environment:**
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # macOS / Linux
 # .venv\Scripts\Activate.ps1 # Windows (PowerShell)
 ```
 
-### **3. Install Dependencies**
-
+**Install dependencies:**
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.lock
 ```
 
-### **4. Create a `.env` File**
+### **3. Create a `.env` File**
 
 ```bash
 echo "APP_NAME=SiteMate AI Backend
@@ -90,8 +113,14 @@ APP_NAME=SiteMate AI Backend
 DEBUG=True
 ```
 
-### **5. Run the Development Server**
+### **4. Run the Development Server**
 
+**With uv:**
+```bash
+uv run uvicorn main:app --reload
+```
+
+**With pip:**
 ```bash
 uvicorn main:app --reload
 ```
@@ -102,8 +131,14 @@ Visit API Docs:
 http://127.0.0.1:8000/docs
 ```
 
-### **6. Run Tests**
+### **5. Run Tests**
 
+**With uv:**
+```bash
+uv run pytest
+```
+
+**With pip:**
 ```bash
 pytest
 ```
