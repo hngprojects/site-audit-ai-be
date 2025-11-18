@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from app.features.waitlist.models.waitlist import Waitlist
 from app.platform.cache.redis import redis
 import json
-
+import os
 CACHE_KEY = "waitlist_stats"
-CACHE_TTL = 300 
+CACHE_TTL = os.getenv("WAITLIST_STATS_CACHE_TTL", 300)  # Default to 5 minutes
 async def add_to_waitlist(db: AsyncSession, name: str, email: str):
     entry = Waitlist(name=name, email=email)
     db.add(entry)
