@@ -274,4 +274,4 @@ async def reset_password(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to reset password")
+        raise HTTPException(status_code=500, detail=f"Failed to reset password: {e}")
