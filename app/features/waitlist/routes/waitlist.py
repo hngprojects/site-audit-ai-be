@@ -15,7 +15,7 @@ async def join_waitlist(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        entry = await add_to_waitlist(db, waitlist_in.name, waitlist_in.email)
+        entry = await add_to_waitlist(db, waitlist_in.name, waitlist_in.email, waitlist_in.referred_by)
     except Exception as e:
         raise HTTPException(status_code=400, detail="Email already registered or DB error.")
     background_tasks.add_task(send_thank_you_email, waitlist_in.email, waitlist_in.name)
