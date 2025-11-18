@@ -13,7 +13,8 @@ from app.features.auth.schemas.auth import (
     LoginRequest,
     TokenResponse,
     UserResponse,
-    ChangePasswordRequest
+    ChangePasswordRequest,
+    VerifyEmailRequest
 )
 from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token
@@ -275,3 +276,26 @@ async def reset_password(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset password: {e}")
+
+
+@router.post(
+    "/verify-email",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Verify email with OTP",
+    description="Verify a user's email address using the OTP sent to their email"
+)
+async def verify_email(
+    request: VerifyEmailRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Verify user's email with OTP.
+    """
+    auth_service = AuthService(db)
+    await auth_service.verify_email_otp(request.email, request.otp)
+    return api_response(
+        message="Email verified successfully.",
+        status_code=200,
+        success=True
+    )

@@ -285,3 +285,24 @@ class AuthService:
         user.password_hash = hash_password(new_password)
         await self.db.commit()
         await self.db.refresh(user)
+
+    async def verify_email_otp(self, email: str, otp: str) -> None:
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.is_email_verified:
+            raise HTTPException(status_code=400, detail="Email already verified")
+        if user.verification_otp != otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        if not user.otp_expires_at or user.otp_expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="OTP expired")
+
+        user.is_email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        user.verification_otp = None
+        user.otp_expires_at = None
+        await self.db.commit()
+        await self.db.refresh(user)    
