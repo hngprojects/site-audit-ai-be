@@ -1,7 +1,3 @@
-"""
-Authentication Models
-Pydantic models for authentication requests and responses
-"""
 from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
 from typing import Optional
