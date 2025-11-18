@@ -7,6 +7,7 @@ from app.features.waitlist.models.waitlist import Base
 
 from app.platform.db.base import Base
 from app.features.waitlist.models.waitlist import * 
+from app.features.auth.models.verify_email import *
 #import your model bases here for alembic
 
 from alembic import context
