@@ -1,20 +1,34 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import Header
+from typing import Optional
+from app.features.auth.models.user import User
+from app.features.auth.schemas import AuthResponse
+from app.features.auth.schemas import AuthResponse
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.features.auth.schemas.auth import (
     SignupRequest,
     LoginRequest,
     TokenResponse,
-    UserResponse
+    UserResponse,
+    ChangePasswordRequest
 )
 from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token
 from app.platform.services.email import send_verification_otp
 
 
+from app.features.auth.schemas import (
+    ForgetPasswordRequest,
+    ResendResetTokenRequest,
+    ResetPasswordRequest,
+    AuthResponse
+)
+
+
+blacklisted_tokens = set()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer()
 
@@ -38,11 +52,9 @@ async def signup(
     """
     auth_service = AuthService(db)
     token_response, otp = await auth_service.register_user(request)
-    
-    # Print OTP to terminal for debugging
+
     print(f"OTP for {request.email}: {otp}")
-    
-    # Send OTP email in background (non-blocking)
+
     background_tasks.add_task(
         send_verification_otp,
         to_email=request.email,
@@ -113,6 +125,7 @@ async def logout(
         # Validate the token
         token = credentials.credentials
         payload = decode_access_token(token)
+        blacklisted_tokens.add(token)
         
         return api_response(
             data=None,
@@ -138,6 +151,12 @@ async def get_current_user(
     """
     try:
         token = credentials.credentials
+        if token in blacklisted_tokens:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         payload = decode_access_token(token)
         user_id = payload.get("sub")
         
@@ -179,3 +198,80 @@ async def get_current_user(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+# async def change_password(
+#     request: ChangePasswordRequest,
+# ):
+
+#     async def get_current_user(authorization: Optional[str] = Header(None)):
+#         if not authorization or not authorization.startswith("Bearer "):
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Not authenticated",
+#                 headers={"WWW-Authenticate": "Bearer"},
+#             )
+        
+#         token = authorization.replace("Bearer ", "")
+#         try:
+#             payload = decode_access_token(token)
+#             user_id = payload.get("sub")
+#             if not user_id:
+#                 raise HTTPException(
+#                     status_code=status.HTTP_401_UNAUTHORIZED,
+#                     detail="Invalid authentication credentials"
+#                 )
+#             return user_id
+#         except ValueError as e:
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail=str(e)
+#             )
+    
+#     user_id = await get_current_user(authorization)
+#     auth_service = AuthService(db)
+    
+#     await auth_service.change_password(
+#         user_id=user_id,
+#         current_password=request.current_password,
+#         new_password=request.new_password
+#     )
+    
+#     return api_response(
+#         message="Password changed successfully",
+#         status_code=200,
+#         success=True
+#     )
+
+@router.post("/reset-password", response_model=AuthResponse)
+async def reset_password(
+    request: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Reset password using valid token"""
+    token = credentials.credentials
+    if token in blacklisted_tokens:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    auth_service = AuthService(db)
+    try:
+        await auth_service.change_password(
+            user_id=user.id,
+            current_password=request.current_password,
+            new_password=request.new_password
+        )
+
+        return api_response(
+            message="Password changed successfully",
+            status_code=200,
+            success=True
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to reset password")
