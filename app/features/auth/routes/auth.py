@@ -61,7 +61,7 @@ async def signup(
 
 # Route for resending verification OTP
 @router.post(
-    "/resend-verification-otp",
+    "/resend-verification",
     response_model=dict,
     status_code=status.HTTP_200_OK,
     summary="Resend verification OTP",

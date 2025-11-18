@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.add_column('users', sa.Column('otp_last_resent_at', sa.DateTime(), nullable=True))
     op.alter_column('users', 'id',
                existing_type=sa.VARCHAR(length=36),
-               type_=app.features.auth.models.user.GUID(),
+               type_=sa.String(),
                existing_nullable=False)
     op.alter_column('users', 'is_email_verified',
                existing_type=sa.BOOLEAN(),

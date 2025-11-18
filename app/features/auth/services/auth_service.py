@@ -240,6 +240,7 @@ class AuthService:
         user.verification_otp = new_otp
         user.otp_expires_at = otp_expiry
         user.otp_last_resent_at = now
+        user.otp_resend_count += 1
 
         await self.db.commit()
         await self.db.refresh(user)
