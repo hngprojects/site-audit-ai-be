@@ -99,3 +99,7 @@ class PasswordResetConfirm(BaseModel):
 class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

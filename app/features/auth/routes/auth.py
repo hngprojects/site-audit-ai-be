@@ -10,6 +10,7 @@ from app.features.auth.schemas.auth import (
 )
 from app.features.auth.services.auth_service import AuthService
 from app.platform.services.email import send_verification_otp
+from app.features.auth.schemas.auth import ResendVerificationRequest
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -57,3 +58,36 @@ async def signup(
         status_code=201,
         success=True
     )
+
+# Route for resending verification OTP
+@router.post(
+    "/resend-verification-otp",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Resend verification OTP",
+    description="Request a new OTP to verify code if the original was not received or expired."
+)
+async def resend_verification_otp(
+        request: ResendVerificationRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession = Depends(get_db)
+):
+    auth_service = AuthService(db)
+
+    try:
+        username, otp = await auth_service.resend_verification_code(request.email)
+
+        background_tasks.add_task(
+            send_verification_otp,
+            to_email=request.email,
+            username=username,
+            otp=otp
+        )
+        return api_response(
+            data={"email": request.email},
+            message="Verification code has been resent. Please check your email.",
+            status_code=200,
+            success=True
+        )
+    except HTTPException:
+        raise
