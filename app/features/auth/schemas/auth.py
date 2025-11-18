@@ -124,3 +124,15 @@ class ChangePasswordRequest(BaseModel):
 class GoogleAuthRequest(BaseModel):
     id_token: str = Field(..., description="ID token from Google Sign-In")
     platform: Optional[str] = Field("ios", description="Platform: ios or android")
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not re.search(r'\d', v):
+            raise ValueError('Password must contain at least one digit')
+        return v
+    
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    otp: str    
