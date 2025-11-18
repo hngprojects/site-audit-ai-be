@@ -137,8 +137,8 @@ class AuthService:
             user=user_response
         )
 
-    async def get_user_by_id(self, user_id: int) -> Optional[User]:
-        """Get user by ID"""
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """Get user by ID (accepts UUID string)"""
         result = await self.db.execute(
             select(User).where(User.id == user_id)
         )
