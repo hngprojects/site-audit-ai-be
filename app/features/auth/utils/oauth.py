@@ -4,7 +4,8 @@ from fastapi import HTTPException, status
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
-from app.platform.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID_ANDROID
+# from app.platform.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_ID_ANDROID
+from app.platform.config import settings
 
 
 class GoogleOAuthVerifier:
@@ -27,9 +28,9 @@ class GoogleOAuthVerifier:
         """
         try:
             client_id = (
-                GOOGLE_CLIENT_ID_ANDROID
+                settings.GOOGLE_CLIENT_ID_ANDROID
                 if platform and platform.lower() == "android"
-                else GOOGLE_CLIENT_ID
+                else settings.GOOGLE_CLIENT_ID
             )
 
             if not client_id:
