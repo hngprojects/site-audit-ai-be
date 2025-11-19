@@ -4,6 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from datetime import datetime, timedelta
 from typing import Optional
+import logging
+
 
 from app.features.auth.models.user import User
 from app.features.auth.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
@@ -14,6 +16,9 @@ from app.features.auth.utils.security import (
     create_refresh_token,
     generate_otp
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -173,6 +178,7 @@ class AuthService:
         await self.db.refresh(user)
         return user
 
+
     # async def generate_reset_token(self, email: str) -> tuple[str, datetime]:
     #     """Generate a password reset token that expires in 1 minute"""
     #     # Find user by email
@@ -305,4 +311,81 @@ class AuthService:
         user.verification_otp = None
         user.otp_expires_at = None
         await self.db.commit()
-        await self.db.refresh(user)    
+        await self.db.refresh(user)
+
+    async def resend_verification_code(self, email:str) -> tuple[str, str]:
+        """Resend verification code with rate limiting"""
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+
+        logger.info(f"Resend verification attempt for email: {email}")
+
+        if not user:
+            logger.warning(f"Resend verification failed - email not found: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email not found"
+            )
+
+        if user.is_email_verified:
+            logger.warning(f"Resend verification failed - email already verified: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is already verified"
+            )
+
+        # Rate limiting: max 5 resends within 1 hour
+        now = datetime.utcnow()
+
+        if user.otp_last_resent_at:
+            time_since_last_resend = (now  - user.otp_last_resent_at).total_seconds()
+            if time_since_last_resend < 60:
+                remaining_seconds = int(60 - time_since_last_resend)
+                logger.warning(
+                    f"Resend verification rate limied (cooldown) - user: {user.id},"
+                    f"email: {email}, seconds_since_last: {time_since_last_resend:.2f}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Please wait {remaining_seconds} seconds before requesting a new OTP."
+                )
+
+        # Rate count if last resend was more than an hour ago
+        one_hour_ago = now - timedelta(hours=1)
+        if user.otp_last_resent_at and user.otp_last_resent_at < one_hour_ago:
+            user.otp_resend_count = 0
+
+        # Check if resend limit exceeded
+        if user.otp_resend_count >= 3:
+            logger.warning(
+                f"Resend verification rate limied (hourly max) - user: {user.id},"
+                f"email: {email}, resend_count: {user.otp_resend_count}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="You have exceeded the maximum number of OTP resend attempts. Please try again later."
+            )
+
+        # Generate new OTP
+        new_otp = generate_otp()
+        otp_expiry = now + timedelta(minutes=10)
+
+        user.verification_otp = new_otp
+        user.otp_expires_at = otp_expiry
+        user.otp_last_resent_at = now
+        user.otp_resend_count += 1
+
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        logger.info(
+            f"Verification code resent successfully -user: {user.id},"
+            f"email: {email}, resend_count: {user.otp_resend_count + 1}"
+        )
+
+        return user.username, new_otp
+
+
+
