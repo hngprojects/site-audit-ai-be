@@ -3,19 +3,23 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-from app.features.waitlist.models.waitlist import Base
-
-from app.platform.db.base import Base
-from app.features.waitlist.models.waitlist import * 
-from app.features.auth.models.verify_email import *
-#import your model bases here for alembic
 
 from alembic import context
 from dotenv import load_dotenv
 
+# Import Base first
+from app.platform.db.base import Base
+
+# Then import all models for Alembic to detect them
+from app.features.waitlist.models.waitlist import Waitlist
+from app.features.auth.models.user import User
+from app.features.auth.models.verify_email import EmailVerification
 load_dotenv()
 
-db_url = os.getenv("DATABASE_URL").replace("+asyncpg", "")
+# Get DATABASE_URL and convert async drivers to sync for Alembic
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    db_url = db_url.replace("+asyncpg", "").replace("+aiosqlite", "")
 
 
 # this is the Alembic Config object, which provides

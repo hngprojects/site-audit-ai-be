@@ -36,7 +36,7 @@ class EmailVerificationService:
 
         # Validate code first
         if record.code != code:
-            await db.commit()  # commit only once after updates
+            await db.commit() 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=api_error("Invalid verification code")
@@ -51,7 +51,7 @@ class EmailVerificationService:
 
         # Mark as verified
         record.verified = True
-        await db.commit()  # commit once at the end
+        await db.commit()
 
         # Generate temporary token
         temp_token = generate_temp_token()
