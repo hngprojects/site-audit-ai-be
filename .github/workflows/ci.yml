@@ -5,10 +5,19 @@ on:
     branches:
       - main
   pull_request:
+    branches:
+      - main
+      - dev
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: tests
+  cancel-in-progress: true
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: hng-13-runner
     env:
       DATABASE_URL: sqlite+aiosqlite:///./site_audit.db
     steps:
