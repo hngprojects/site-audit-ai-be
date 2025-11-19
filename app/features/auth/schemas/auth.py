@@ -117,7 +117,11 @@ class ChangePasswordRequest(BaseModel):
         if not re.search(r'\d', v):
             raise ValueError('Password must contain at least one digit')
         return v
-    
+
 class VerifyEmailRequest(BaseModel):
     email: EmailStr
-    otp: str    
+    otp: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

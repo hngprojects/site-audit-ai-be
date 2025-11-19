@@ -43,7 +43,7 @@ class TestForgotPassword:
                     # Mock the email sending
                     with patch("app.features.auth.routes.auth.send_password_reset_email") as mock_send_email:
                         response = client.post(
-                            "/api/v1/auth/auth/forgot-password",
+                            "/api/v1/auth/forgot-password",
                             json={"email": "test@example.com"}
                         )
 
@@ -78,7 +78,7 @@ class TestForgotPassword:
         """Test forgot password with invalid email format"""
         with patch("app.features.auth.routes.auth.get_db", return_value=mock_db):
             response = client.post(
-                "/api/v1/auth/auth/forgot-password",
+                "/api/v1/auth/forgot-password",
                 json={"email": "invalid-email"}
             )
 
@@ -104,7 +104,7 @@ class TestForgotPassword:
                     
                     with patch("app.features.auth.routes.auth.send_password_reset_email") as mock_send_email:
                         response = client.post(
-                            "/api/v1/auth/auth/resend-reset-token",
+                            "/api/v1/auth/resend-reset-token",
                             json={"email": "test@example.com"}
                         )
 
@@ -137,7 +137,7 @@ class TestForgotPassword:
 
             with patch("app.features.auth.routes.auth.get_db", return_value=mock_db):
                 response = client.post(
-                    "/api/v1/auth/auth/verify-forgot-password",
+                    "/api/v1/auth/verify-forgot-password",
                     json={
                         "email": "test@example.com",
                         "token": valid_token,
@@ -161,7 +161,7 @@ class TestForgotPassword:
                 mock_decode.side_effect = ValueError("Invalid token")
                 
                 response = client.post(
-                    "/api/v1/auth/auth/verify-forgot-password",
+                    "/api/v1/auth/verify-forgot-password",
                     json={
                         "email": "test@example.com",
                         "token": "invalid_token",
@@ -183,7 +183,7 @@ class TestForgotPassword:
             )
             
             response = client.post(
-                "/api/v1/auth/auth/verify-forgot-password",
+                "/api/v1/auth/verify-forgot-password",
                 json={
                     "email": "test@example.com",
                     "token": valid_token,
@@ -214,7 +214,7 @@ class TestForgotPassword:
                     # Mock the email sending to prevent actual SMTP connection
                     with patch("app.features.auth.routes.auth.send_password_reset_email") as mock_send_email:
                         response = client.post(
-                            "/api/v1/auth/auth/forgot-password",
+                            "/api/v1/auth/forgot-password",
                             json={"email": "test@example.com"}
                         )
 
