@@ -174,33 +174,6 @@ class AuthService:
         await self.db.refresh(user)
         return user
 
-    async def generate_reset_token(self, email: str) -> tuple[str, datetime]:
-        """Generate a password reset token that expires in 1 minute"""
-        # Find user by email
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
-        user = result.scalar_one_or_none()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-
-        # Generate reset token and set expiration (1 minute)
-        reset_token = generate_verification_token()
-        expires_at = datetime.utcnow() + timedelta(minutes=1)
-
-        # Update user with reset token
-        user.password_reset_token = reset_token
-        user.password_reset_expires_at = expires_at
-
-        await self.db.commit()
-        await self.db.refresh(user)
-
-        return reset_token, expires_at
-
     async def verify_reset_token(self, email: str, token: str) -> bool:
         """Verify that the reset token is valid and not expired"""
         # Find user by email

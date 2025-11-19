@@ -3,8 +3,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Header
 from typing import Optional
+from datetime import timedelta, datetime
 from app.features.auth.models.user import User
-from app.features.auth.schemas import AuthResponse, ForgotResetTokenRequest
+from app.features.auth.schemas import AuthResponse,ForgotResetTokenRequest,ForgetPasswordRequest,ResendResetTokenRequest,ResetPasswordRequest
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.features.auth.schemas.auth import (
@@ -16,14 +17,10 @@ from app.features.auth.schemas.auth import (
     VerifyEmailRequest
 )
 from app.features.auth.services.auth_service import AuthService
-from app.features.auth.utils.security import decode_access_token
+from app.features.auth.utils.security import decode_access_token,create_access_token,create_refresh_token
 from app.platform.services.email import send_verification_otp
-from app.features.auth.schemas import (
-    ForgetPasswordRequest,
-    ResendResetTokenRequest,
-    ResetPasswordRequest
-)
 from app.platform.services.email import send_password_reset_email
+
 
 
 
@@ -298,9 +295,7 @@ async def verify_email(
         success=True
     )
     
-
-
-@router.post("/auth/forgot-password", response_model=AuthResponse)
+@router.post("/forgot-password", response_model=AuthResponse)
 async def forgot_password(
     request: ForgetPasswordRequest,
     background_tasks: BackgroundTasks,
@@ -308,10 +303,26 @@ async def forgot_password(
 ):
     """Request password reset - generates token and sends email"""
     try:
+        
         auth_service = AuthService(db)
 
-        # Generate reset token with 1-minute expiration
-        token, expires_at = await auth_service.generate_reset_token(request.email)
+        # Get user by email and generate reset token with 1-minute expiration
+        user = await auth_service.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        token = create_access_token(
+            data={"sub": str(user.id), "email": user.email},
+            expires_delta=timedelta(minutes=1)
+        )
+
+        # Store the token in the database
+        user.password_reset_token = token
+        user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=1)
+        await db.commit()
 
         # Send reset email in background
         background_tasks.add_task(send_password_reset_email, request.email, token)
@@ -326,7 +337,7 @@ async def forgot_password(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to process request")
 
-@router.post("/auth/resend-reset-token", response_model=AuthResponse)
+@router.post("/resend-reset-token", response_model=AuthResponse)
 async def resend_reset_token(
     request: ResendResetTokenRequest,
     background_tasks: BackgroundTasks,
@@ -336,8 +347,24 @@ async def resend_reset_token(
     try:
         auth_service = AuthService(db)
 
-        # Generate new reset token
-        token, expires_at = await auth_service.generate_reset_token(request.email)
+        # Get user by email
+        user = await auth_service.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+
+        token = create_refresh_token(
+            data={"sub": str(user.id), "email": user.email},
+            expires_delta=timedelta(minutes=1)  
+        )
+
+        # Store the new token in the database
+        user.password_reset_token = token
+        user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=1)
+        await db.commit()
 
         # Send new reset email
         background_tasks.add_task(send_password_reset_email, request.email, token)
@@ -352,7 +379,7 @@ async def resend_reset_token(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to resend reset email")
 
-@router.post("/auth/verify-forgot-password", response_model=AuthResponse)
+@router.post("/verify-forgot-password", response_model=AuthResponse)
 async def reset_password(
     request: ForgotResetTokenRequest,
     db: AsyncSession = Depends(get_db)
@@ -364,7 +391,7 @@ async def reset_password(
         # Verify token is valid and not expired
         await auth_service.verify_reset_token(request.email, request.token)
 
-        # Update password (this will also clear the reset token)
+
         await auth_service.update_password(request.email, request.new_password)
 
         return api_response(

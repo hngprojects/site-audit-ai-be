@@ -5,43 +5,17 @@ from app.platform.config import MAIL_FROM_ADDRESS, MAIL_HOST, MAIL_PORT, MAIL_US
 import httpx
 
 def send_email(to_email: str, subject: str, body: str):
-
     
-    try:
+    msg = MIMEText(body, 'html')
+    msg["Subject"] = subject
+    msg["From"] = MAIL_FROM_ADDRESS
+    msg["To"] = to_email
 
-        form_data = {
-            "subject": subject,
-            "recipients": [to_email],
-            "body": body,
-        }
-        
-
-        response = httpx.post(
-            "http://3.232.57.58/crunch-email",
-            data={
-                "subject": form_data["subject"],
-                "recipients": form_data["recipients"],
-                "body": form_data["body"],
-            },
-            timeout=30.0
-        )
-        response.raise_for_status()
-        
-    except Exception as e:
-        print(f"Failed to send email via external service: {e}")
-        raise
-    
-    # ORIGINAL SMTP IMPLEMENTATION (COMMENTED OUT FOR PATCH)
-    # msg = MIMEText(body, 'html')
-    # msg["Subject"] = subject
-    # msg["From"] = MAIL_FROM_ADDRESS
-    # msg["To"] = to_email
-
-    # with smtplib.SMTP(MAIL_HOST, MAIL_PORT) as server:
-    #     if MAIL_ENCRYPTION == "TLS":
-    #         server.starttls()
-    #     server.login(MAIL_USERNAME, MAIL_PASSWORD)
-    #     server.sendmail(MAIL_FROM_ADDRESS, [to_email], msg.as_string())
+    with smtplib.SMTP(MAIL_HOST, MAIL_PORT) as server:
+        if MAIL_ENCRYPTION == "TLS":
+            server.starttls()
+        server.login(MAIL_USERNAME, MAIL_PASSWORD)
+        server.sendmail(MAIL_FROM_ADDRESS, [to_email], msg.as_string())
 
 
 def send_verification_otp(to_email: str, username: str, otp: str):
