@@ -1,0 +1,48 @@
+[project]
+name = "site-audit-ai-be"
+version = "0.1.0"
+description = "Sitelytics Backend Service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "annotated-doc==0.0.4",
+    "annotated-types==0.7.0",
+    "anyio==4.11.0",
+    "click==8.3.1",
+    "fastapi==0.121.2",
+    "greenlet==3.2.4",
+    "h11==0.16.0",
+    "idna==3.11",
+    "pydantic==2.12.4",
+    "pydantic-core==2.41.5",
+    "python-dotenv==1.2.1",
+    "sniffio==1.3.1",
+    "sqlalchemy==2.0.44",
+    "starlette==0.49.3",
+    "typing-extensions==4.15.0",
+    "typing-inspection==0.4.2",
+    "uvicorn==0.38.0",
+]
+
+# ------------------------
+# RUFF CONFIG
+# ------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
