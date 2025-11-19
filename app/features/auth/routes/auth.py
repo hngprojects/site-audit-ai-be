@@ -4,8 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Header
 from typing import Optional
 from app.features.auth.models.user import User
-from app.features.auth.schemas import AuthResponse
-from app.features.auth.schemas import AuthResponse
+from app.features.auth.schemas import AuthResponse, ForgotResetTokenRequest
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.features.auth.schemas.auth import (
@@ -19,14 +18,13 @@ from app.features.auth.schemas.auth import (
 from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token
 from app.platform.services.email import send_verification_otp
-
-
 from app.features.auth.schemas import (
     ForgetPasswordRequest,
     ResendResetTokenRequest,
-    ResetPasswordRequest,
-    AuthResponse
+    ResetPasswordRequest
 )
+from app.platform.services.email import send_password_reset_email
+
 
 
 blacklisted_tokens = set()
@@ -300,20 +298,7 @@ async def verify_email(
         success=True
     )
     
- from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.platform.db.session import get_db
-from app.platform.response import api_response
-from app.features.auth.schemas import (
-    ForgetPasswordRequest,
-    ResendResetTokenRequest,
-    ResetPasswordRequest,
-    AuthResponse
-)
-from app.features.auth.services.auth_service import AuthService
-from app.platform.services.email import send_password_reset_email
 
-router = APIRouter()
 
 @router.post("/auth/forgot-password", response_model=AuthResponse)
 async def forgot_password(
@@ -369,7 +354,7 @@ async def resend_reset_token(
 
 @router.post("/auth/verify-forgot-password", response_model=AuthResponse)
 async def reset_password(
-    request: ResetPasswordRequest,
+    request: ForgotResetTokenRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """Reset password using valid token"""
