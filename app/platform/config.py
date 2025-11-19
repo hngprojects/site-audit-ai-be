@@ -1,4 +1,3 @@
-# app/platform/config.py
 from pydantic_settings import BaseSettings
 from typing import Literal
 from pathlib import Path
