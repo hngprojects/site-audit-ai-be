@@ -10,4 +10,12 @@ class WaitlistOut(BaseModel):
     email: EmailStr
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+# Standardized API Response Schema
+class WaitlistResponse(BaseModel):
+    status_code: int
+    success: bool
+    message: str
+    data: WaitlistOut
