@@ -109,3 +109,15 @@ pytest
 ```
 
 ---
+
+
+## 📝 Notes
+
+- Use the vertical slice pattern: keep all code for a feature together
+- Shared logic goes in `platform`, not in individual features
+- Register new routers in `api_routers/v1.py`
+- Keep the codebase modular and easy to navigate
+
+---
+
+Built with ❤️ using FastAPI and modern Python tools
