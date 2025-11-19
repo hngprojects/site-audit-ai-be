@@ -142,8 +142,8 @@ class AuthService:
             user=user_response
         )
 
-    async def get_user_by_id(self, user_id: int) -> Optional[User]:
-        """Get user by ID"""
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """Get user by ID (accepts UUID string)"""
         result = await self.db.execute(
             select(User).where(User.id == user_id)
         )
@@ -177,6 +177,141 @@ class AuthService:
         await self.db.commit()
         await self.db.refresh(user)
         return user
+
+
+    # async def generate_reset_token(self, email: str) -> tuple[str, datetime]:
+    #     """Generate a password reset token that expires in 1 minute"""
+    #     # Find user by email
+    #     result = await self.db.execute(
+    #         select(User).where(User.email == email.lower())
+    #     )
+    #     user = result.scalar_one_or_none()
+
+    #     if not user:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_404_NOT_FOUND,
+    #             detail="User not found"
+    #         )
+
+    #     # Generate reset token and set expiration (1 minute)
+    #     reset_token = generate_verification_token()
+    #     expires_at = datetime.utcnow() + timedelta(minutes=1)
+
+    #     # Update user with reset token
+    #     user.password_reset_token = reset_token
+    #     user.password_reset_expires_at = expires_at
+
+    #     await self.db.commit()
+    #     await self.db.refresh(user)
+
+    #     return reset_token, expires_at
+
+    async def verify_reset_token(self, email: str, token: str) -> bool:
+        """Verify that the reset token is valid and not expired"""
+        # Find user by email
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Check if token matches and hasn't expired
+        if (user.password_reset_token != token or
+            not user.password_reset_expires_at or
+            user.password_reset_expires_at < datetime.utcnow()):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token"
+            )
+
+        return True
+
+    async def update_password(self, email: str, new_password: str) -> None:
+        """Update user password and clear reset token"""
+        # Find user by email
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Hash new password and update
+        user.password_hash = hash_password(new_password)
+        user.password_reset_token = None
+        user.password_reset_expires_at = None
+
+        await self.db.commit()
+        await self.db.refresh(user)
+
+    async def clear_reset_token(self, email: str) -> None:
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+
+        if user:
+            user.password_reset_token = None
+            user.password_reset_expires_at = None
+            await self.db.commit()
+
+    async def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        result = await self.db.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        if not verify_password(current_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect"
+            )
+
+        if current_password == new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from current password"
+            )
+
+        user.password_hash = hash_password(new_password)
+        await self.db.commit()
+        await self.db.refresh(user)
+
+    async def verify_email_otp(self, email: str, otp: str) -> None:
+        result = await self.db.execute(
+            select(User).where(User.email == email.lower())
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.is_email_verified:
+            raise HTTPException(status_code=400, detail="Email already verified")
+        if user.verification_otp != otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        if not user.otp_expires_at or user.otp_expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="OTP expired")
+
+        user.is_email_verified = True
+        user.email_verified_at = datetime.utcnow()
+        user.verification_otp = None
+        user.otp_expires_at = None
+        await self.db.commit()
+        await self.db.refresh(user)
 
     async def resend_verification_code(self, email:str) -> tuple[str, str]:
         """Resend verification code with rate limiting"""
