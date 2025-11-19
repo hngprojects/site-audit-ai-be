@@ -3,8 +3,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Header
 from typing import Optional
+from datetime import datetime
+import logging
 from app.features.auth.models.user import User
-from app.features.auth.schemas import AuthResponse
 from app.features.auth.schemas import AuthResponse
 from app.platform.db.session import get_db
 from app.platform.response import api_response
@@ -17,9 +18,8 @@ from app.features.auth.schemas.auth import (
     VerifyEmailRequest
 )
 from app.features.auth.services.auth_service import AuthService
-from app.features.auth.utils.security import decode_access_token
 from app.platform.services.email import send_verification_otp
-
+from app.features.auth.utils.security import decode_refresh_token, create_access_token, decode_access_token
 
 from app.features.auth.schemas import (
     ForgetPasswordRequest,
@@ -28,6 +28,7 @@ from app.features.auth.schemas import (
     AuthResponse
 )
 
+logger = logging.getLogger(__name__)
 
 blacklisted_tokens = set()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -62,6 +63,12 @@ async def signup(
         username=request.username,
         otp=otp
     )
+
+    logger.info(
+        f"User registered - Email: {request.email}, "
+        f"Username: {request.username}, "
+        f"Timestamp: {datetime.utcnow().isoformat()}"
+    )
     
     return api_response(
         data={
@@ -93,6 +100,11 @@ async def login(
     """
     auth_service = AuthService(db)
     token_response = await auth_service.login_user(request)
+
+    logger.info(
+        f"User logged in - Email: {request.email}, "
+        f"Timestamp: {datetime.utcnow().isoformat()}"
+    )
     
     return api_response(
         data={
@@ -127,6 +139,12 @@ async def logout(
         token = credentials.credentials
         payload = decode_access_token(token)
         blacklisted_tokens.add(token)
+
+        user_id = payload.get("sub")
+        logger.info(
+            f"User logged out - UserID: {user_id}, "
+            f"Timestamp: {datetime.utcnow().isoformat()}"
+        )
         
         return api_response(
             data=None,
@@ -137,10 +155,99 @@ async def logout(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail={
+                "error": "Token expired",
+                "error_code": "TOKEN_EXPIRED",
+                "message": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+@router.post(
+    "/refresh",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Refresh access token",
+    description="Get a new access token using refresh token"
+)
+async def refresh_token(
+    refresh_token: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db)
+):
+
+    auth_service = AuthService(db)
+    
+    try:
+        # Decode refresh token
+        payload = decode_refresh_token(refresh_token)
+        user_id = payload.get("sub")
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "error": "Invalid token",
+                    "error_code": "TOKEN_INVALID",
+                    "message": "Invalid refresh token",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+        
+        # Get user
+        user = await auth_service.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "error": "User not found",
+                    "error_code": "UNAUTHORIZED",
+                    "message": "User not found",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+        
+        # Generate new access token
+        new_access_token = create_access_token(data={"sub": str(user.id)})
+        
+        # Audit log - Token refreshed
+        logger.info(f"Token refreshed - UserID: {user.id}, Timestamp: {datetime.utcnow().isoformat()}")
+        
+        return api_response(
+            data={
+                "access_token": new_access_token,
+                "refresh_token": refresh_token,  # Return same refresh token
+                "token_type": "bearer"
+            },
+            message="Token refreshed successfully",
+            status_code=200,
+            success=True
+        )
+    
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(f"Refresh token expired or invalid: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "Token expired",
+                "error_code": "TOKEN_EXPIRED",
+                "message": "Your refresh token has expired. Please log in again.",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "Invalid token",
+                "error_code": "TOKEN_INVALID",
+                "message": "Invalid refresh token",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -187,16 +294,31 @@ async def get_current_user(
             is_email_verified=user.is_email_verified,
             created_at=user.created_at
         )
+    except HTTPException:
+        raise
     except ValueError as e:
+        # Token expired - Session timeout
+        logger.info(f"Session timeout - Token expired for user")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail={
+                "error": "Token expired",
+                "error_code": "TOKEN_EXPIRED",
+                "message": "Your session has expired due to inactivity. Please log in again.",
+                "timestamp": datetime.utcnow().isoformat()
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
+        logger.warning(f"Authentication failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
+            detail={
+                "error": "Authentication failed",
+                "error_code": "UNAUTHORIZED",
+                "message": "Invalid authentication credentials",
+                "timestamp": datetime.utcnow().isoformat()
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     
