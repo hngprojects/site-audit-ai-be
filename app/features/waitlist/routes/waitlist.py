@@ -4,7 +4,7 @@ from app.platform.db.session import get_db
 from app.features.waitlist.schemas.waitlist import WaitlistIn, WaitlistOut, WaitlistResponse
 from app.features.waitlist.services.waitlist import add_to_waitlist,get_waitlist_stats
 from app.features.waitlist.utils.emailer import send_thank_you_email
-from fastapi.responses import JSONResponse
+from app.platform.response import api_response
 router = APIRouter( tags=["Waitlist"])
 
 @router.post("/waitlist", response_model=WaitlistResponse)
@@ -29,12 +29,9 @@ async def join_waitlist(
 @router.get("/waitlist/stats")
 async def waitlist_stats(db: AsyncSession = Depends(get_db)):
     stats = await get_waitlist_stats(db)
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "status_code": 200,
-            "message": "Waitlist statistics retrieved",
-            "data": stats
-        }
-    )
+    return api_response(
+    data=stats,
+    message="Waitlist statistics retrieved",
+    status_code=200,
+    success=True
+)
