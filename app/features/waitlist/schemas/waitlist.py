@@ -5,7 +5,7 @@ class WaitlistIn(BaseModel):
     email: EmailStr
 
 class WaitlistOut(BaseModel):
-    id: int
+    id: UUID
     name: str
     email: EmailStr
 
