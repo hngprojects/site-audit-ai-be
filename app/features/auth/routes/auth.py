@@ -19,6 +19,7 @@ from app.features.auth.schemas.auth import (
 from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token
 from app.platform.services.email import send_verification_otp
+from app.features.auth.schemas.auth import ResendVerificationRequest
 
 
 from app.features.auth.schemas import (
@@ -93,7 +94,7 @@ async def login(
     """
     auth_service = AuthService(db)
     token_response = await auth_service.login_user(request)
-    
+
     return api_response(
         data={
             "access_token": token_response.access_token,
@@ -127,7 +128,7 @@ async def logout(
         token = credentials.credentials
         payload = decode_access_token(token)
         blacklisted_tokens.add(token)
-        
+
         return api_response(
             data=None,
             message="Logout successful",
@@ -160,24 +161,24 @@ async def get_current_user(
             )
         payload = decode_access_token(token)
         user_id = payload.get("sub")
-        
+
         if user_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         auth_service = AuthService(db)
         user = await auth_service.get_user_by_id(user_id)
-        
+
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         return UserResponse(
             id=str(user.id),
             email=user.email,
@@ -199,7 +200,7 @@ async def get_current_user(
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
 # async def change_password(
 #     request: ChangePasswordRequest,
 # ):
@@ -211,7 +212,7 @@ async def get_current_user(
 #                 detail="Not authenticated",
 #                 headers={"WWW-Authenticate": "Bearer"},
 #             )
-        
+
 #         token = authorization.replace("Bearer ", "")
 #         try:
 #             payload = decode_access_token(token)
@@ -227,16 +228,16 @@ async def get_current_user(
 #                 status_code=status.HTTP_401_UNAUTHORIZED,
 #                 detail=str(e)
 #             )
-    
+
 #     user_id = await get_current_user(authorization)
 #     auth_service = AuthService(db)
-    
+
 #     await auth_service.change_password(
 #         user_id=user_id,
 #         current_password=request.current_password,
 #         new_password=request.new_password
 #     )
-    
+
 #     return api_response(
 #         message="Password changed successfully",
 #         status_code=200,
@@ -299,3 +300,36 @@ async def verify_email(
         status_code=200,
         success=True
     )
+
+# Route for resending verification OTP
+@router.post(
+    "/resend-verification",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Resend verification OTP",
+    description="Request a new OTP to verify code if the original was not received or expired."
+)
+async def resend_verification_otp(
+        request: ResendVerificationRequest,
+        background_tasks: BackgroundTasks,
+        db: AsyncSession = Depends(get_db)
+):
+    auth_service = AuthService(db)
+
+    try:
+        username, otp = await auth_service.resend_verification_code(request.email)
+
+        background_tasks.add_task(
+            send_verification_otp,
+            to_email=request.email,
+            username=username,
+            otp=otp
+        )
+        return api_response(
+            data={"email": request.email},
+            message="Verification code has been resent. Please check your email.",
+            status_code=200,
+            success=True
+        )
+    except HTTPException:
+        raise
