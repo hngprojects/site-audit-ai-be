@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 from datetime import datetime, timedelta
 from app.features.waitlist.models.waitlist import Waitlist
-from app.platform.cache.redis import redis
+from app.features.waitlist.utils.redis import redis
 import json
 import os
 CACHE_KEY = "waitlist_stats"
