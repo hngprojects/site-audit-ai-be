@@ -40,17 +40,26 @@ jobs:
       - name: Install dependencies
         run: |
           source venv/bin/activate
-          # uv add psycopg psycopg2-binary
           uv sync
+
+      - name: Generate migration revision
+        run: |
+          source venv/bin/activate
+          uv run alembic revision --autogenerate -m "ci migration test"
+
+      - name: Run Alembic migrations
+        run: |
+          source venv/bin/activate
+          uv run alembic upgrade head
 
       - name: Run tests
         run: |
           source venv/bin/activate
           uv run pytest
 
-      - name: Clean CI Database
-        env:
-          DATABASE_URL: ${{ secrets.CI_DB }}
-        run: |
-          psql $DATABASE_URL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+      # - name: Clean CI Database
+      #   env:
+      #     DATABASE_URL: ${{ secrets.CI_DB }}
+      #   run: |
+      #     psql $DATABASE_URL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 
