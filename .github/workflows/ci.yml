@@ -31,6 +31,7 @@ jobs:
 
       - name: Set up Python 3.12 and dependencies
         run: |
+          sudo apt install libpq-dev -y
           sudo apt install python3.12-venv -y
           python3.12 -m venv venv
           source venv/bin/activate
