@@ -16,10 +16,10 @@ from app.features.auth.schemas.auth import (
     ChangePasswordRequest,
     VerifyEmailRequest
 )
-from app.features.auth.services.auth_service import AuthService
-from app.features.auth.utils.security import decode_access_token,create_access_token,create_refresh_token
+from app.features.auth.services.auth_service import AuthService,send_password_reset_email
+from app.features.auth.utils.security import decode_access_token, generate_otp
 from app.platform.services.email import send_verification_otp
-from app.platform.services.email import send_password_reset_email
+
 
 
 
@@ -314,21 +314,18 @@ async def forgot_password(
                 detail="User not found"
             )
 
-        token = create_access_token(
-            data={"sub": str(user.id), "email": user.email},
-            expires_delta=timedelta(minutes=1)
-        )
+        verification_otp = generate_otp()
 
         # Store the token in the database
-        user.password_reset_token = token
-        user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=1)
+        user.verification_otp=verification_otp
+        user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
         await db.commit()
 
         # Send reset email in background
-        background_tasks.add_task(send_password_reset_email, request.email, token)
+        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
 
         return api_response(
-            message="Password reset email sent. Link expires in 1 minute.",
+            message="Password reset email sent. Link expires in 2 minutes.",
             status_code=200,
             success=True
         )
@@ -346,7 +343,7 @@ async def resend_reset_token(
     """Resend reset token if previous one expired"""
     try:
         auth_service = AuthService(db)
-
+        
         # Get user by email
         user = await auth_service.get_user_by_email(request.email)
         if not user:
@@ -354,22 +351,19 @@ async def resend_reset_token(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
+       
+        verification_otp = generate_otp()
 
-
-        token = create_refresh_token(
-            data={"sub": str(user.id), "email": user.email},
-            expires_delta=timedelta(minutes=1)  
-        )
-
-        # Store the new token in the database
-        user.password_reset_token = token
+        # Store the token in the database
+        user.verification_otp=verification_otp
+        user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
         await db.commit()
 
         # Send new reset email
-        background_tasks.add_task(send_password_reset_email, request.email, token)
+        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
 
         return api_response(
-            message="New password reset email sent. Link expires in 1 minute.",
+            message="New password reset email sent. Link expires in 2 minutes.",
             status_code=200,
             success=True
         )
@@ -388,8 +382,7 @@ async def reset_password(
         auth_service = AuthService(db)
 
         # Verify token is valid and not expired
-        await auth_service.verify_reset_token(request.email, request.token)
-
+        await auth_service.verify_otp(request.email, request.token)
 
         await auth_service.update_password(request.email, request.new_password)
 
