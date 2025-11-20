@@ -6,6 +6,11 @@ client = TestClient(app)
 
 
 def test_health_check():
-    response = client.get("/api/v1/health")
+    response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+
+    payload = response.json()
+    assert payload["status_code"] == 200
+    assert payload["status"] == "success"
+    assert payload["message"] == "Service is healthy"
+    assert payload["data"] == {"status": "ok", "service": "Site Audit AI"}
