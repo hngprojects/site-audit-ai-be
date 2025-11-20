@@ -7,11 +7,7 @@ on:
 
 jobs:
   check-branch:
-<<<<<<< HEAD
     runs-on: self-hosted
-=======
-    runs-on: hng-13-runner
->>>>>>> befaac0 (fix: update workflow runner)
     steps:
       - name: Get branch name
         id: branch
