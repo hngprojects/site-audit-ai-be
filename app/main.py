@@ -28,5 +28,7 @@ app.add_middleware(
 )
 
 add_exception_handlers(app)
-# Only include the versioned API router
+
+app.include_router(waitlist_router)
+app.include_router(health_router)
 app.include_router(api_router, prefix="/api/v1")

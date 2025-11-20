@@ -9,6 +9,4 @@ api_router = APIRouter()
 
 # Register all feature routes
 api_router.include_router(auth_router)
-api_router.include_router(waitlist_router)
-api_router.include_router(health_router)
 
