@@ -10,12 +10,14 @@ import logging
 from app.features.auth.models.user import User
 from app.features.auth.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
 from app.features.auth.utils.security import (
+    generate_verification_token,
     hash_password,
     verify_password,
     create_access_token,
     create_refresh_token,
     generate_otp
 )
+from app.platform.services.email import send_email
 
 
 logger = logging.getLogger(__name__)
@@ -178,35 +180,7 @@ class AuthService:
         await self.db.refresh(user)
         return user
 
-
-    # async def generate_reset_token(self, email: str) -> tuple[str, datetime]:
-    #     """Generate a password reset token that expires in 1 minute"""
-    #     # Find user by email
-    #     result = await self.db.execute(
-    #         select(User).where(User.email == email.lower())
-    #     )
-    #     user = result.scalar_one_or_none()
-
-    #     if not user:
-    #         raise HTTPException(
-    #             status_code=status.HTTP_404_NOT_FOUND,
-    #             detail="User not found"
-    #         )
-
-    #     # Generate reset token and set expiration (1 minute)
-    #     reset_token = generate_verification_token()
-    #     expires_at = datetime.utcnow() + timedelta(minutes=1)
-
-    #     # Update user with reset token
-    #     user.password_reset_token = reset_token
-    #     user.password_reset_expires_at = expires_at
-
-    #     await self.db.commit()
-    #     await self.db.refresh(user)
-
-    #     return reset_token, expires_at
-
-    async def verify_reset_token(self, email: str, token: str) -> bool:
+    async def verify_otp(self, email: str, otp: str) -> bool:
         """Verify that the reset token is valid and not expired"""
         # Find user by email
         result = await self.db.execute(
@@ -221,9 +195,12 @@ class AuthService:
             )
 
         # Check if token matches and hasn't expired
-        if (user.password_reset_token != token or
-            not user.password_reset_expires_at or
-            user.password_reset_expires_at < datetime.utcnow()):
+        if (user.verification_otp != otp or
+            not user.otp_expires_at or
+            user.otp_expires_at < datetime.utcnow()):
+            logger.warning(
+                f"Password reset verification failed - invalid or expired OTP - user: {user.id}, email: {email}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired reset token"
@@ -247,11 +224,13 @@ class AuthService:
 
         # Hash new password and update
         user.password_hash = hash_password(new_password)
-        user.password_reset_token = None
-        user.password_reset_expires_at = None
+        user.verification_otp = None
+        user.otp_expires_at = None
 
         await self.db.commit()
         await self.db.refresh(user)
+        
+        logger.info(f"Password reset successful - user: {user.id}, email: {email}")
 
     async def clear_reset_token(self, email: str) -> None:
         result = await self.db.execute(
@@ -388,4 +367,47 @@ class AuthService:
         return user.username, new_otp
 
 
+def send_password_reset_email(to_email: str, otp: str):
+    """Send password reset email to user"""
+    subject = "Password Reset Request - Site Audit AI"
 
+    body = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #FF6B35;">Password Reset Request</h2>
+                <p>Hi there,</p>
+                <p>We received a request to reset your password for your Site Audit AI account. If you made this request, please use the OTP code below:</p>
+
+                <div style="text-align: center; margin: 30px 0;">
+                    <div style="background-color: #f5f5f5; 
+                                padding: 20px; 
+                                border-radius: 10px;
+                                display: inline-block;">
+                        <p style="margin: 0; font-size: 14px; color: #666;">Your OTP Code</p>
+                        <h1 style="margin: 10px 0; 
+                                   font-size: 36px; 
+                                   letter-spacing: 8px;
+                                   color: #FF6B35;
+                                   font-weight: bold;">{otp}</h1>
+                    </div>
+                </div>
+
+                <p style="color: #666; font-size: 14px; margin-top: 30px;">
+                    This OTP will expire in <strong>10 minutes</strong>. If you didn't request a password reset, please ignore this email.
+                </p>
+
+                <p style="color: #999; font-size: 12px; margin-top: 20px;">
+                    <strong>Security Tip:</strong> Never share this OTP with anyone. Site Audit AI will never ask for your OTP via phone or email.
+                </p>
+
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                <p style="color: #999; font-size: 12px;">
+                    &copy; 2025 Site Audit AI. All rights reserved.
+                </p>
+            </div>
+        </body>
+    </html>
+    """
+
+    send_email(to_email, subject, body)

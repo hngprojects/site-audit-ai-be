@@ -20,7 +20,7 @@ API for website auditing and analysis, built with FastAPI, SQLAlchemy (async), A
 ├── scripts/                # Utility scripts
 ├── tests/                  # Unit tests
 ├── pyproject.toml          # Project dependencies and metadata
-├── requirements.lock       # Locked dependencies (for uv)
+├── uv.lock                 # Locked dependencies (for uv)
 └── README.md
 ```
 
@@ -73,7 +73,7 @@ git clone <repo-url> && cd site-audit-ai-be
 uv sync
 ```
 
-> **Note**: Or use `pip install -r requirements.lock` if not using uv
+> **Note**: Or use `pip install -e .` if not using uv
 
 ### Set Up Environment Variables
 

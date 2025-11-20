@@ -3,9 +3,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Header
 from typing import Optional
+from datetime import timedelta, datetime
 from app.features.auth.models.user import User
-from app.features.auth.schemas import AuthResponse
-from app.features.auth.schemas import AuthResponse
+from app.features.auth.schemas import AuthResponse,ForgotResetTokenRequest,ForgetPasswordRequest,ResendResetTokenRequest,ResetPasswordRequest
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.features.auth.schemas.auth import (
@@ -16,18 +16,9 @@ from app.features.auth.schemas.auth import (
     ChangePasswordRequest,
     VerifyEmailRequest
 )
-from app.features.auth.services.auth_service import AuthService
-from app.features.auth.utils.security import decode_access_token
+from app.features.auth.services.auth_service import AuthService,send_password_reset_email
+from app.features.auth.utils.security import decode_access_token, generate_otp
 from app.platform.services.email import send_verification_otp
-from app.features.auth.schemas.auth import ResendVerificationRequest
-
-
-from app.features.auth.schemas import (
-    ForgetPasswordRequest,
-    ResendResetTokenRequest,
-    ResetPasswordRequest,
-    AuthResponse
-)
 
 
 blacklisted_tokens = set()
@@ -65,15 +56,9 @@ async def signup(
     )
     
     return api_response(
-        data={
-            "access_token": token_response.access_token,
-            "refresh_token": token_response.refresh_token,
-            "token_type": token_response.token_type,
-            "user": token_response.user.model_dump(mode='json')
-        },
+        data=token_response,
         message="User registered successfully. Please check your email for the OTP code to verify your account.",
-        status_code=201,
-        success=True
+        status_code=status.HTTP_201_CREATED
     )
 
 
@@ -96,15 +81,9 @@ async def login(
     token_response = await auth_service.login_user(request)
 
     return api_response(
-        data={
-            "access_token": token_response.access_token,
-            "refresh_token": token_response.refresh_token,
-            "token_type": token_response.token_type,
-            "user": token_response.user.model_dump(mode='json')
-        },
+        data=token_response,
         message="Login successful",
-        status_code=200,
-        success=True
+        status_code=status.HTTP_200_OK
     )
 
 
@@ -132,8 +111,7 @@ async def logout(
         return api_response(
             data=None,
             message="Logout successful",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except ValueError as e:
         raise HTTPException(
@@ -241,7 +219,6 @@ async def get_current_user(
 #     return api_response(
 #         message="Password changed successfully",
 #         status_code=200,
-#         success=True
 #     )
 
 @router.post("/reset-password", response_model=AuthResponse)
@@ -270,8 +247,7 @@ async def reset_password(
 
         return api_response(
             message="Password changed successfully",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except HTTPException:
         raise
@@ -297,39 +273,106 @@ async def verify_email(
     await auth_service.verify_email_otp(request.email, request.otp)
     return api_response(
         message="Email verified successfully.",
-        status_code=200,
-        success=True
+        status_code=status.HTTP_200_OK
     )
-
-# Route for resending verification OTP
-@router.post(
-    "/resend-verification",
-    response_model=dict,
-    status_code=status.HTTP_200_OK,
-    summary="Resend verification OTP",
-    description="Request a new OTP to verify code if the original was not received or expired."
-)
-async def resend_verification_otp(
-        request: ResendVerificationRequest,
-        background_tasks: BackgroundTasks,
-        db: AsyncSession = Depends(get_db)
+    
+@router.post("/forgot-password", response_model=AuthResponse)
+async def forgot_password(
+    request: ForgetPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
 ):
-    auth_service = AuthService(db)
-
+    """Request password reset - generates token and sends email"""
     try:
-        username, otp = await auth_service.resend_verification_code(request.email)
+        
+        auth_service = AuthService(db)
 
-        background_tasks.add_task(
-            send_verification_otp,
-            to_email=request.email,
-            username=username,
-            otp=otp
-        )
+        # Get user by email and generate reset token with 1-minute expiration
+        user = await auth_service.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        verification_otp = generate_otp()
+
+        # Store the token in the database
+        user.verification_otp=verification_otp
+        user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
+        await db.commit()
+
+        # Send reset email in background
+        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
+
         return api_response(
             data={"email": request.email},
             message="Verification code has been resent. Please check your email.",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to process request")
+
+@router.post("/resend-reset-token", response_model=AuthResponse)
+async def resend_reset_token(
+    request: ResendResetTokenRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Resend reset token if previous one expired"""
+    try:
+        auth_service = AuthService(db)
+        
+        # Get user by email
+        user = await auth_service.get_user_by_email(request.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+       
+        verification_otp = generate_otp()
+
+        # Store the token in the database
+        user.verification_otp=verification_otp
+        user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
+        await db.commit()
+
+        # Send new reset email
+        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
+
+        return api_response(
+            message="New password reset email sent. Link expires in 2 minutes.",
+            status_code=200,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to resend reset email")
+
+@router.post("/verify-forgot-password", response_model=AuthResponse)
+async def reset_password(
+    request: ForgotResetTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Reset password using valid token"""
+    try:
+        auth_service = AuthService(db)
+
+        # Verify token is valid and not expired
+        await auth_service.verify_otp(request.email, request.token)
+
+        await auth_service.update_password(request.email, request.new_password)
+
+        return api_response(
+            message="Password reset successfully",
+            status_code=200,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to reset password")
+   
+
