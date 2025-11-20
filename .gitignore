@@ -9,3 +9,5 @@ __pycache__
 local/
 static/uploads/profile-pictures/*
 !static/uploads/profile-pictures/.gitkeep
+*.db
+alembic/versions/*.py
