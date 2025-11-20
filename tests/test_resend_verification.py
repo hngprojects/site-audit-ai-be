@@ -1,6 +1,6 @@
 import pytest
 import uuid
-from uuid6 import uuid7
+from uuid_extension import uuid7
 import time
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
