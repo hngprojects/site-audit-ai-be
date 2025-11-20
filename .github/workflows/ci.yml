@@ -39,8 +39,8 @@ jobs:
       - name: Install dependencies
         run: |
           source venv/bin/activate
-          uv sync
           uv add psycopg2-binary
+          uv sync
 
       - name: Run Alembic migrations
         run: |
