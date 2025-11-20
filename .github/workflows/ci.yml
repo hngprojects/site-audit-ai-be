@@ -64,45 +64,42 @@ jobs:
           DATABASE_URL: ${{ secrets.CI_DB }}
         run: |
           source venv/bin/activate
-          uv run python -c "
+          uv run python - <<'PY'
           import psycopg2
           from urllib.parse import urlparse
-          
-          def parse_postgres_url(url: str) -> dict[str, str]:
-              """
-              Parse a SQLAlchemy/PostgreSQL URL like:
-                  postgresql+psycopg://user:pass@host/dbname?...
-              and return the connection pieces expected by psycopg2.
-              """
-              parsed = urlparse(url)
-              # `parsed.netloc` still contains credentials, so rely on the dedicated attrs
-              username = parsed.username or ''
-              password = parsed.password or ''
-              host = parsed.hostname or ''
-              port = str(parsed.port or 5432)
-              dbname = parsed.path.lstrip('/') or ''
 
+
+          def parse_postgres_url(url: str) -> dict[str, str]:
+              """Parse a SQLAlchemy/PostgreSQL URL into psycopg2 kwargs."""
+              parsed = urlparse(url)
+              username = parsed.username or ""
+              password = parsed.password or ""
+              host = parsed.hostname or ""
+              port = str(parsed.port or 5432)
+              dbname = parsed.path.lstrip("/") or ""
               return {
-                  'dbname': dbname,
-                  'user': username,
-                  'password': password,
-                  'host': host,
-                  'port': port,
+                  "dbname": dbname,
+                  "user": username,
+                  "password": password,
+                  "host": host,
+                  "port": port,
               }
 
-          conn = psycopg2.connect(**parse_postgres_url('${DATABASE_URL}'))
+
+          conn = psycopg2.connect(**parse_postgres_url("${DATABASE_URL}"))
           conn.autocommit = True
           cur = conn.cursor()
-          cur.execute(\"\"\"
-          DO $$ DECLARE
-              r RECORD;
-          BEGIN
-              FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-                  EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
-              END LOOP;
-          END $$;
-          \"\"\")
+          cur.execute(
+              """
+              DO $$ DECLARE
+                  r RECORD;
+              BEGIN
+                  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                      EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+                  END LOOP;
+              END $$;
+              """
+          )
           cur.close()
           conn.close()
-          "
-
+          PY
