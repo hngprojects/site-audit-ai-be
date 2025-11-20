@@ -219,7 +219,6 @@ async def get_current_user(
 #     return api_response(
 #         message="Password changed successfully",
 #         status_code=200,
-#         success=True
 #     )
 
 @router.post("/reset-password", response_model=AuthResponse)
@@ -347,7 +346,6 @@ async def resend_reset_token(
         return api_response(
             message="New password reset email sent. Link expires in 2 minutes.",
             status_code=200,
-            success=True
         )
     except HTTPException:
         raise
@@ -371,7 +369,6 @@ async def reset_password(
         return api_response(
             message="Password reset successfully",
             status_code=200,
-            success=True
         )
     except HTTPException:
         raise
