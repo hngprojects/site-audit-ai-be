@@ -1,7 +1,7 @@
 """create oauth table
 
 Revision ID: 4a468c70c14a
-Revises: 8fa912a8cb79
+Revises: c489e27dd5f2
 Create Date: 2025-11-18 22:24:27.012121
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '4a468c70c14a'
-down_revision: Union[str, Sequence[str], None] = '8fa912a8cb79'
+down_revision: Union[str, Sequence[str], None] = 'c489e27dd5f2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
