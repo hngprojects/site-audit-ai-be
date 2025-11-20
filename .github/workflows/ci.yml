@@ -30,7 +30,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --locked --dev
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          uv sync 
 
       - name: Run Alembic migrations
         run: uv run alembic upgrade head
