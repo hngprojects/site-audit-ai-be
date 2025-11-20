@@ -10,4 +10,5 @@ local/
 static/uploads/profile-pictures/*
 !static/uploads/profile-pictures/.gitkeep
 *.db
-
+alembic/versions
+site_audit_ai_be.egg-info/
