@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.CI_DB }}
     steps:
@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: |
           source venv/bin/activate
-          uv add psycopg2-binary
+          uv add psycopg psycopg2-binary
           uv sync
 
       - name: Run Alembic migrations
