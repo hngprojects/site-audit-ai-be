@@ -40,7 +40,6 @@ jobs:
         run: |
           source venv/bin/activate
           uv sync
-          pip install alembic python-dotenv uuid_extension
 
       - name: Generate migration revision
         run: |
