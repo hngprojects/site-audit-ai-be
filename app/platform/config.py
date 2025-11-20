@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Literal
+from typing import Literal, Optional
 from pathlib import Path
 
 
@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str 
+    DATABASE_URL: str
 
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     MAIL_ENCRYPTION: str = "tls"
     MAIL_FROM_ADDRESS: str = 'example@localhost'
     MAIL_FROM_NAME: str = 'SiteMate AI'
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────
     JWT_SECRET_KEY: str = "your-secret-key-change-this-in-production"
