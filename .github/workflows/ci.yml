@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: |
           source venv/bin/activate
-          uv add psycopg psycopg2-binary
+          # uv add psycopg psycopg2-binary
           uv sync
 
       - name: Run tests
