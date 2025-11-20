@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime
 #from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy import Integer
 from sqlalchemy.sql import func
 from app.platform.db.base import Base, BaseModel
 from datetime import datetime
@@ -21,6 +22,8 @@ class User(BaseModel):
     email_verified_at = Column(DateTime, nullable=True)
     verification_otp = Column(String(6), nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
+    otp_resend_count = Column(Integer, default=0)
+    otp_last_resent_at = Column(DateTime, nullable=True)
     
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
