@@ -44,7 +44,7 @@ jobs:
       - name: Run Alembic migrations
         run: |
           source venv/bin/activate
-          pip install alembic python-dotenv
+          pip install alembic python-dotenv uuid_extension
           uv run alembic upgrade head
 
       - name: Generate migration revision
