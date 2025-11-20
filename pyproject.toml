@@ -35,7 +35,7 @@ dependencies = [
     "uuid-extension>=0.2.0",
     "asyncpg>=0.30.0",
     "alembic>=1.17.2",
-    "psycopg2>=2.9.11",
+    "psycopg2-binary>=2.9.11",
 ]
 
 # ------------------------
