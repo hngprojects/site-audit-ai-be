@@ -115,7 +115,7 @@ def send_verification_otp(to_email: str, username: str, otp: str):
                                    font-size: 36px; 
                                    letter-spacing: 8px;
                                    color: #FF6B35;
-                                   font-weight: bold;">{reset_token}</h1>
+                                   font-weight: bold;">{otp}</h1>
                     </div>
                 </div>
 
