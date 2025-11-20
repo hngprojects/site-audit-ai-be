@@ -19,7 +19,7 @@ jobs:
   tests:
     runs-on: self-hosted
     env:
-      DATABASE_URL: sqlite+aiosqlite:///./site_audit.db
+      DATABASE_URL: ${{ secrets.CI_DB }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
