@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Literal
+from typing import Literal, Optional
 from pathlib import Path
 
 
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     MAIL_ENCRYPTION: str
     MAIL_FROM_ADDRESS: str
     MAIL_FROM_NAME: str
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────
     JWT_SECRET_KEY: str = "your-secret-key-change-this-in-production"

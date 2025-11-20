@@ -300,8 +300,8 @@ class TestOAuthRoutes:
 class TestGoogleOAuthVerifier:
     """Test Google OAuth token verification"""
 
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID", "test_client_id")
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID_ANDROID", "test_android_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID", "test_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID_ANDROID", "test_android_client_id")
     @patch("app.features.auth.utils.oauth.id_token.verify_oauth2_token")
     def test_verify_token_ios_success(self, mock_verify):
         """Test successful token verification for iOS"""
@@ -321,8 +321,8 @@ class TestGoogleOAuthVerifier:
         assert result["email_verified"] is True
         mock_verify.assert_called_once()
 
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID", "test_client_id")
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID_ANDROID", "test_android_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID", "test_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID_ANDROID", "test_android_client_id")
     @patch("app.features.auth.utils.oauth.id_token.verify_oauth2_token")
     def test_verify_token_android_success(self, mock_verify):
         """Test successful token verification for Android"""
@@ -341,7 +341,7 @@ class TestGoogleOAuthVerifier:
         assert result["email"] == "test@example.com"
         assert result["email_verified"] is True
 
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID", None)
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID", None)
     def test_verify_token_no_client_id(self):
         """Test token verification with no client ID configured"""
         from app.features.auth.utils.oauth import GoogleOAuthVerifier
@@ -351,7 +351,7 @@ class TestGoogleOAuthVerifier:
 
         assert "Google OAuth not configured" in str(exc_info.value.detail)
 
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID", "test_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID", "test_client_id")
     @patch("app.features.auth.utils.oauth.id_token.verify_oauth2_token")
     def test_verify_token_invalid_issuer(self, mock_verify):
         """Test token verification with invalid issuer"""
@@ -368,7 +368,7 @@ class TestGoogleOAuthVerifier:
 
         assert "Invalid Google token" in str(exc_info.value.detail)
 
-    @patch("app.features.auth.utils.oauth.GOOGLE_CLIENT_ID", "test_client_id")
+    @patch("app.features.auth.utils.oauth.settings.GOOGLE_CLIENT_ID", "test_client_id")
     @patch("app.features.auth.utils.oauth.id_token.verify_oauth2_token")
     def test_verify_token_verification_error(self, mock_verify):
         """Test token verification with verification error"""
