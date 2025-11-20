@@ -13,14 +13,14 @@ class Settings(BaseSettings):
     DATABASE_URL: str
 
     # ── Email Configuration ─────────────────────
-    MAIL_MAILER: str
-    MAIL_HOST: str
+    MAIL_MAILER: str = "smtp"
+    MAIL_HOST: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
-    MAIL_USERNAME: str
-    MAIL_PASSWORD: str
-    MAIL_ENCRYPTION: str
-    MAIL_FROM_ADDRESS: str
-    MAIL_FROM_NAME: str
+    MAIL_USERNAME: str ='your-email-id'
+    MAIL_PASSWORD: str = 'your-password'
+    MAIL_ENCRYPTION: str = "tls"
+    MAIL_FROM_ADDRESS: str = 'example@localhost'
+    MAIL_FROM_NAME: str = 'SiteMate AI'
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 

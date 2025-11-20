@@ -48,15 +48,15 @@ def test_logout_success(authenticated_user):
     }
     
     response = client.post("/api/v1/auth/logout", headers=headers)
-    
+
     assert response.status_code == 200
     data = response.json()
     
     # Check response structure
-    assert "message" in data
+    assert data["status"] == "success"
     assert "logout successful" in data["message"].lower()
-    assert "success" in data
-    assert data["success"] is True
+    assert data["status_code"] == 200
+    assert data["data"] == {}
 
 
 def test_logout_without_token():
@@ -76,7 +76,8 @@ def test_logout_with_invalid_token():
     
     assert response.status_code == 401
     data = response.json()
-    assert "detail" in data
+    assert data["status"] == "error"
+    assert "invalid" in data["message"].lower()
 
 
 def test_logout_with_malformed_token():
@@ -208,8 +209,7 @@ def test_logout_response_structure(authenticated_user):
     data = response.json()
     
     # Check response structure matches api_response format
-    assert "success" in data
+    assert data["status"] == "success"
     assert "message" in data
-    assert "status_code" in data
     assert data["status_code"] == 200
-    assert data["success"] is True
+    assert data["data"] == {}
