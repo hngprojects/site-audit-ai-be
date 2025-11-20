@@ -45,6 +45,7 @@ jobs:
       - name: Generate migration revision
         run: |
           source venv/bin/activate
+          rm -rf alembic/versions/*
           mkdir -p alembic/versions
           uv run alembic revision --autogenerate -m "ci migration test"
 
