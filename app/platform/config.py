@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     MAIL_ENCRYPTION: str = "tls"
     MAIL_FROM_ADDRESS: str = 'example@localhost'
     MAIL_FROM_NAME: str = 'SiteMate AI'
+<<<<<<< HEAD
     GOOGLE_CLIENT_ID: str = 'dummy-value'
+=======
+    GOOGLE_CLIENT_ID: str = 'your-google-client-id'
+>>>>>>> f92da59 (fix: add default value for google client id)
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────
