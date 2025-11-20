@@ -68,6 +68,7 @@ jobs:
         run: |
           source venv/bin/activate
           uv run python - <<'PY'
+          import os
           import psycopg2
           from urllib.parse import urlparse
 
@@ -89,7 +90,11 @@ jobs:
               }
 
 
-          conn = psycopg2.connect(**parse_postgres_url("${DATABASE_URL}"))
+          database_url = os.environ.get("DATABASE_URL", "")
+          if not database_url:
+              raise RuntimeError("DATABASE_URL environment variable is not set.")
+
+          conn = psycopg2.connect(**parse_postgres_url(database_url))
           conn.autocommit = True
           cur = conn.cursor()
           cur.execute(
