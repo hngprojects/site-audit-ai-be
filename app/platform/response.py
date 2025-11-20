@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from fastapi import status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 
@@ -14,6 +15,7 @@ def api_response(
     Automatically sets status = "success" if < 400 else "error"
     """
     status_str = "success" if status_code < 400 else "error"
+    data = jsonable_encoder(data) if data is not None else {}
 
     return JSONResponse(
         status_code=status_code,

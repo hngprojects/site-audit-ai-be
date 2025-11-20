@@ -1,5 +1,5 @@
 from fastapi import Request, status
-from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.exceptions import RequestValidationError, HTTPException, StarletteHTTPException
 from app.platform.response import api_response
 import logging
 

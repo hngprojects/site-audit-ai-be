@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.db.session import get_db
 from app.features.waitlist.schemas.waitlist import WaitlistIn, WaitlistOut, WaitlistResponse
@@ -19,12 +19,17 @@ async def join_waitlist(
         background_tasks.add_task(send_thank_you_email, waitlist_in.email, waitlist_in.name)
         
         return api_response(
-            data=WaitlistOut.from_orm(entry),
+            data=WaitlistOut.model_validate(entry),
             message="Successfully added to waitlist",
             status_code=status.HTTP_201_CREATED,
         )
-    except Exception as e:
+    except HTTPException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered or database error."
+            detail="Email already registered"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {e}"
         )
