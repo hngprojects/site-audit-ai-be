@@ -17,6 +17,8 @@ class User(BaseModel):
     
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
     
     is_email_verified = Column(Boolean, default=False)
     email_verified_at = Column(DateTime, nullable=True)

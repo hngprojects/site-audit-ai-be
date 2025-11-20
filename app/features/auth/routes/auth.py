@@ -124,10 +124,9 @@ async def logout(
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db)
-) -> UserResponse:
+) -> User:
     """
     Dependency to get the current authenticated user.
-    Use this in routes that require authentication.
     """
     try:
         token = credentials.credentials
@@ -157,15 +156,7 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return UserResponse(
-            id=str(user.id),
-            email=user.email,
-            username=user.username,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            is_email_verified=user.is_email_verified,
-            created_at=user.created_at
-        )
+        return user
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

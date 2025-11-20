@@ -6,5 +6,6 @@ __pycache__
 .vscode
 .pytest_cache
 .ruff_cache
-*.db
 local/
+static/uploads/profile-pictures/*
+!static/uploads/profile-pictures/.gitkeep
