@@ -3,18 +3,48 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.platform.config import settings
 
+
 def send_email(to_email: str, subject: str, body: str):
+    """
+    Send an HTML email using SMTP with proper TLS/SSL handling.
     
-    msg = MIMEText(body, 'html')
+    MAIL_ENCRYPTION should be one of: "SSL", "TLS", or None.
+    MAIL_PORT must match the encryption type:
+        SSL -> 465
+        TLS -> 587
+        None -> 25 or custom
+    """
+    print("Email reached here:", body)
+
+    msg = MIMEMultipart()
     msg["Subject"] = subject
     msg["From"] = settings.MAIL_FROM_ADDRESS
     msg["To"] = to_email
+    msg.attach(MIMEText(body, "html"))
 
-    with smtplib.SMTP(settings.MAIL_HOST, settings.MAIL_PORT) as server:
-        if settings.MAIL_ENCRYPTION == "TLS":
-            server.starttls()
+    try:
+        if settings.MAIL_ENCRYPTION.upper() == "SSL":
+            server = smtplib.SMTP_SSL(settings.MAIL_HOST, settings.MAIL_PORT)
+
+        else:
+            server = smtplib.SMTP(settings.MAIL_HOST, settings.MAIL_PORT)
+            server.ehlo()
+            if settings.MAIL_ENCRYPTION.upper() == "TLS":
+                server.starttls()
+                server.ehlo()
+
+        # Login
         server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+
+        # Send email
         server.sendmail(settings.MAIL_FROM_ADDRESS, [to_email], msg.as_string())
+        server.quit()
+
+        print(f"Email sent to {to_email}")
+
+    except Exception as e:
+        print(f"Failed to send email to {to_email}: {e}")
+        raise
 
 
 def send_verification_otp(to_email: str, username: str, otp: str):
