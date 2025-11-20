@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: site-audit-runner
+    runs-on: self-hosted
     env:
       DATABASE_URL: sqlite+aiosqlite:///./site_audit.db
     steps:
