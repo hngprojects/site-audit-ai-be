@@ -65,15 +65,9 @@ async def signup(
     )
     
     return api_response(
-        data={
-            "access_token": token_response.access_token,
-            "refresh_token": token_response.refresh_token,
-            "token_type": token_response.token_type,
-            "user": token_response.user.model_dump(mode='json')
-        },
+        data=token_response,
         message="User registered successfully. Please check your email for the OTP code to verify your account.",
-        status_code=201,
-        success=True
+        status_code=status.HTTP_201_CREATED
     )
 
 
@@ -96,15 +90,9 @@ async def login(
     token_response = await auth_service.login_user(request)
 
     return api_response(
-        data={
-            "access_token": token_response.access_token,
-            "refresh_token": token_response.refresh_token,
-            "token_type": token_response.token_type,
-            "user": token_response.user.model_dump(mode='json')
-        },
+        data=token_response,
         message="Login successful",
-        status_code=200,
-        success=True
+        status_code=status.HTTP_200_OK
     )
 
 
@@ -132,8 +120,7 @@ async def logout(
         return api_response(
             data=None,
             message="Logout successful",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except ValueError as e:
         raise HTTPException(
@@ -270,8 +257,7 @@ async def reset_password(
 
         return api_response(
             message="Password changed successfully",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except HTTPException:
         raise
@@ -297,8 +283,7 @@ async def verify_email(
     await auth_service.verify_email_otp(request.email, request.otp)
     return api_response(
         message="Email verified successfully.",
-        status_code=200,
-        success=True
+        status_code=status.HTTP_200_OK
     )
 
 # Route for resending verification OTP
@@ -328,8 +313,7 @@ async def resend_verification_otp(
         return api_response(
             data={"email": request.email},
             message="Verification code has been resent. Please check your email.",
-            status_code=200,
-            success=True
+            status_code=status.HTTP_200_OK
         )
     except HTTPException:
         raise

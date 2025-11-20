@@ -63,6 +63,7 @@ indent-style = "space"
 
 [dependency-groups]
 dev = [
+    "alembic>=1.17.2",
     "httpx>=0.28.1",
     "pytest>=9.0.1",
     "pytest-asyncio>=1.3.0",
