@@ -1,10 +1,7 @@
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from app.platform.db.base import Base, BaseModel
 
-Base = declarative_base()
-
-class Waitlist(Base):
+class Waitlist(BaseModel):
     __tablename__ = "waitlist"
-    id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
