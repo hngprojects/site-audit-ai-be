@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt install libpq-dev -y
           sudo apt install python3.12-venv -y
-          sudo apt install postgresql postgresql-contrib
+          sudo apt install postgresql postgresql-contrib -y
           sudo systemctl start postgresql
           sudo systemctl enable postgresql 
           python3.12 -m venv venv
