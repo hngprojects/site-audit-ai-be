@@ -57,10 +57,3 @@ jobs:
         run: |
           source venv/bin/activate
           uv run pytest
-
-      # - name: Clean CI Database
-      #   env:
-      #     DATABASE_URL: ${{ secrets.CI_DB }}
-      #   run: |
-      #     psql $DATABASE_URL -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-
