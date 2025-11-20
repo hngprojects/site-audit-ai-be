@@ -29,18 +29,30 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Python 3.12 and dependencies
+        run: |
+          python3.12 -m venv venv
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # Assuming you have a requirements.txt for your dependencies
+
       - name: Install dependencies
         run: |
-          apt install python3.12-venv -y
-          python3 -m venv venv
           source venv/bin/activate
-          uv sync 
+          uv sync
 
       - name: Run Alembic migrations
-        run: uv run alembic upgrade head
+        run: |
+          source venv/bin/activate
+          uv run alembic upgrade head
 
       - name: Generate migration revision
-        run: uv run alembic revision --autogenerate -m "ci migration test"
+        run: |
+          source venv/bin/activate
+          uv run alembic revision --autogenerate -m "ci migration test"
 
       - name: Run tests
-        run: uv run pytest
+        run: |
+          source venv/bin/activate
+          uv run pytest
+
