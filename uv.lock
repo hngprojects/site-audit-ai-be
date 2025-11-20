@@ -948,6 +948,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "idna", specifier = "==3.11" },
+    { name = "psycopg", specifier = ">=3.2.12" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.12" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
     { name = "pydantic", extras = ["email"], specifier = "==2.12.4" },

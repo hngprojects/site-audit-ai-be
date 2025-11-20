@@ -8,17 +8,36 @@ import uuid
 class SignupRequest(BaseModel):
     email: EmailStr
     username: str = Field(
-        ..., min_length=3, max_length=100, description="Username must be 3-100 characters"
+        ..., min_length=3, max_length=30, description="Username must be 3-30 characters"
     )
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
 
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
-        """Validate username contains only alphanumeric characters, underscores, and hyphens"""
-        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+        """Validate and normalize username.
+
+        """
+        if not isinstance(v, str):
+            raise ValueError("Invalid username")
+
+        v = v.strip()
+        if len(v) < 3 or len(v) > 30:
+            raise ValueError("Username must be between 3 and 30 characters long")
+
+        if not re.match(r"^[A-Za-z0-9_-]+$", v):
             raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
-        return v.strip()
+
+        if v[0] in "_-" or v[-1] in "_-":
+            raise ValueError("Username cannot start or end with an underscore or hyphen")
+
+        if re.search(r"[_-]{2,}", v):
+            raise ValueError("Username cannot contain consecutive underscores or hyphens")
+
+        if v.isdigit():
+            raise ValueError("Username cannot be only numbers")
+
+        return v.lower()
 
     @field_validator("password")
     @classmethod
