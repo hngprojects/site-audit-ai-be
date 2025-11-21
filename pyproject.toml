@@ -35,6 +35,7 @@ dependencies = [
     "asyncpg>=0.30.0",
     "psycopg[binary]>=3.2.12",
     "python-multipart>=0.0.5",
+    "bcrypt>=5.0.0",
 ]
 
 [tool.setuptools.packages.find]
