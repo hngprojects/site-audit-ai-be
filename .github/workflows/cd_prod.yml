@@ -23,8 +23,7 @@ jobs:
       APP_PORT: ${{ secrets.PROD_APP_PORT }}
       APP_URL: ${{ secrets.PROD_APP_URL }}
       ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
-      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
-      NGINX_LOG_PREFIX: sitemate-prod
+      NGINX_LOG_PREFIX: siteaudit-be-prod
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

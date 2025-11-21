@@ -23,8 +23,7 @@ jobs:
       APP_PORT: ${{ secrets.STAGING_APP_PORT }}
       APP_URL: ${{ secrets.STAGING_APP_URL }}
       ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
-      DATABASE_URL: ${{ secrets.STAGING_DB_URL }}
-      NGINX_LOG_PREFIX: sitemate-staging
+      NGINX_LOG_PREFIX: siteaudit-be-staging
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
