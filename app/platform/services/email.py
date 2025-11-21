@@ -4,10 +4,7 @@ import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Environment, FileSystemLoader
-from app.platform.config import (
-    MAIL_FROM_ADDRESS, MAIL_HOST, MAIL_PORT, 
-    MAIL_USERNAME, MAIL_PASSWORD, MAIL_ENCRYPTION
-)
+from app.platform.config import settings
 from app.platform.logger import get_logger
 
 # Initialize Logger
@@ -26,31 +23,30 @@ def send_email(to_email: str, subject: str, body: str):
     """Base function to send email via SMTP"""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = MAIL_FROM_ADDRESS
+    msg["From"] = settings.MAIL_FROM_ADDRESS
     msg["To"] = to_email
 
     msg.attach(MIMEText(body, 'html'))
 
     try:
-        # Force port to integer
-        port = int(MAIL_PORT)
+        port = settings.MAIL_PORT
         
-        logger.info(f" Connecting to {MAIL_HOST}:{port}...")
+        logger.info(f" Connecting to {settings.MAIL_HOST}:{port}...")
         if port == 465:
             context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(MAIL_HOST, port, context=context) as server:
-                server.login(MAIL_USERNAME, MAIL_PASSWORD)
-                server.sendmail(MAIL_FROM_ADDRESS, to_email, msg.as_string())
+            with smtplib.SMTP_SSL(settings.MAIL_HOST, port, context=context) as server:
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
         else:
-            with smtplib.SMTP(MAIL_HOST, port) as server:
+            with smtplib.SMTP(settings.MAIL_HOST, port) as server:
                 server.ehlo() 
                 
-                if str(MAIL_ENCRYPTION).upper() in ["TLS", "TRUE"]:
+                if str(settings.MAIL_ENCRYPTION).upper() in ["TLS", "TRUE"]:
                     server.starttls()
                     server.ehlo() 
                 
-                server.login(MAIL_USERNAME, MAIL_PASSWORD)
-                server.sendmail(MAIL_FROM_ADDRESS, to_email, msg.as_string())
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
 
         logger.info(f"Email successfully sent to {to_email}")
 
