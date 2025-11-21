@@ -19,7 +19,7 @@ jobs:
   tests:
     runs-on: self-hosted
     env:
-      DATABASE_URL: ${{ secrets.STAGING_DB_URL }}
+      DATABASE_URL: ${{ secrets.CI_DB }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,3 +62,48 @@ jobs:
         run: |
           source venv/bin/activate
           uv run alembic upgrade head
+      
+      - name: Clean up and reset database & Alembic versions
+        env:
+          DATABASE_URL: ${{ secrets.CI_DB }}
+        run: |
+          source venv/bin/activate
+          uv run python - <<'PY'
+          import os
+          import psycopg2
+          from urllib.parse import urlparse
+          def parse_postgres_url(url: str) -> dict[str, str]:
+              """Parse a SQLAlchemy/PostgreSQL URL into psycopg2 kwargs."""
+              parsed = urlparse(url)
+              username = parsed.username or ""
+              password = parsed.password or ""
+              host = parsed.hostname or ""
+              port = str(parsed.port or 5432)
+              dbname = parsed.path.lstrip("/") or ""
+              return {
+                  "dbname": dbname,
+                  "user": username,
+                  "password": password,
+                  "host": host,
+                  "port": port,
+              }
+          database_url = os.environ.get("DATABASE_URL", "")
+          if not database_url:
+              raise RuntimeError("DATABASE_URL environment variable is not set.")
+          conn = psycopg2.connect(**parse_postgres_url(database_url))
+          conn.autocommit = True
+          cur = conn.cursor()
+          cur.execute(
+              """
+              DO $$ DECLARE
+                  r RECORD;
+              BEGIN
+                  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                      EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+                  END LOOP;
+              END $$;
+              """
+          )
+          cur.close()
+          conn.close()
+          PY
