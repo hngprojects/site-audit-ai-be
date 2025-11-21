@@ -19,7 +19,7 @@ jobs:
   tests:
     runs-on: self-hosted
     env:
-      DATABASE_URL: ${{ secrets.CI_DB }}
+      DATABASE_URL: ${{ secrets.STAGING_DB_URL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
         run: |
           source venv/bin/activate
           uv run pytest
-          
+
       - name: Generate migration revision
         run: |
           source venv/bin/activate
