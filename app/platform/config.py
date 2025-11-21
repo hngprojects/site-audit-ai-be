@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str
+    DATABASE_URL: str = 'dummy-db-url'
 
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     MAIL_ENCRYPTION: str = "tls"
     MAIL_FROM_ADDRESS: str = 'example@localhost'
     MAIL_FROM_NAME: str = 'SiteMate AI'
-    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_ID: str = 'dummy-value'
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────

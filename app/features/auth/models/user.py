@@ -4,6 +4,7 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from app.platform.db.base import Base, BaseModel
 from datetime import datetime
 import uuid
@@ -19,7 +20,9 @@ class User(BaseModel):
 
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
-
+    phone_number = Column(String(20), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
+    
     is_email_verified = Column(Boolean, default=False)
     email_verified_at = Column(DateTime, nullable=True)
     verification_otp = Column(String(6), nullable=True)
@@ -32,6 +35,8 @@ class User(BaseModel):
     password_reset_expires_at = Column(DateTime, nullable=True)
 
     last_login = Column(DateTime, nullable=True)
+
+    sites = relationship("Site", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"

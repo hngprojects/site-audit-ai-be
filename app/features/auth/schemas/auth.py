@@ -67,6 +67,8 @@ class UserResponse(BaseModel):
     username: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    profile_picture_url: Optional[str] = None
     is_email_verified: bool
     created_at: datetime
 
@@ -118,6 +120,8 @@ class PasswordResetConfirm(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    phone_number: Optional[str] = Field(None, min_length=10, max_length=20, description="Phone number in international format")
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
 
 
