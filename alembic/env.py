@@ -14,6 +14,7 @@ from app.platform.db.base import Base
 from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
+from app.features.sites.models.site import Site
 
 load_dotenv()
 
