@@ -20,11 +20,11 @@ class TicketPriority(str, Enum):
     URGENT = "urgent"
 
 
-class TicketType(str, Enum):
-    """Type of support request"""
-    EMAIL = "email"
-    MESSAGE = "message"
-    CALLBACK = "callback"
+# class TicketType(str, Enum):
+#     """Type of support request"""
+#     EMAIL = "email"
+#     MESSAGE = "message"
+#     CALLBACK = "callback"
 
 
 class SupportTicket(BaseModel):
@@ -40,7 +40,7 @@ class SupportTicket(BaseModel):
     # Ticket details
     subject = Column(String(500), nullable=False)
     message = Column(Text, nullable=False)
-    ticket_type = Column(SQLEnum(TicketType), nullable=False, default=TicketType.EMAIL)
+    # ticket_type = Column(SQLEnum(TicketType), nullable=False, default=TicketType.EMAIL)
     priority = Column(SQLEnum(TicketPriority), nullable=False, default=TicketPriority.MEDIUM)
     status = Column(SQLEnum(TicketStatus), nullable=False, default=TicketStatus.PENDING, index=True)
     
@@ -49,53 +49,50 @@ class SupportTicket(BaseModel):
     category = Column(String(100), nullable=True)  # e.g., "technical", "billing", "general"
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     resolved_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, nullable=True)
     
     # Metadata
     source = Column(String(50), nullable=True)  # "mobile_app", "web", "api"
-    ip_address = Column(String(45), nullable=True)
-    user_agent = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
     
-    # Response tracking
-    first_response_at = Column(DateTime, nullable=True)
-    response_count = Column(Integer, default=0, nullable=False)
+    # # Response tracking
+    # first_response_at = Column(DateTime, nullable=True)
+    # response_count = Column(Integer, default=0, nullable=False)
     
-    # Additional data (JSON serializable)
-    tags = Column(Text, nullable=True)  # Comma-separated tags
-    notes = Column(Text, nullable=True)  # Internal notes from support agents
+    # # Additional data (JSON serializable)
+    # tags = Column(Text, nullable=True)  # Comma-separated tags
+    # notes = Column(Text, nullable=True)  # Internal notes from support agents
 
     def __repr__(self):
         return f"<SupportTicket(ticket_id='{self.ticket_id}', email='{self.email}', status='{self.status}')>"
 
-    def to_dict(self):
-        """Convert model to dictionary"""
-        return {
-            'id': self.id,
-            'ticket_id': self.ticket_id,
-            'user_id': self.user_id,
-            'name': self.name,
-            'email': self.email,
-            'phone': self.phone,
-            'subject': self.subject,
-            'message': self.message,
-            'ticket_type': self.ticket_type.value if self.ticket_type else None,
-            'priority': self.priority.value if self.priority else None,
-            'status': self.status.value if self.status else None,
-            'assigned_to': self.assigned_to,
-            'category': self.category,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
-            'closed_at': self.closed_at.isoformat() if self.closed_at else None,
-            'source': self.source,
-            'first_response_at': self.first_response_at.isoformat() if self.first_response_at else None,
-            'response_count': self.response_count,
-            'tags': self.tags.split(',') if self.tags else [],
-            'notes': self.notes
-        }
+    # def to_dict(self):
+    #     """Convert model to dictionary"""
+    #     return {
+    #         'id': self.id,
+    #         'ticket_id': self.ticket_id,
+    #         'user_id': self.user_id,
+    #         'name': self.name,
+    #         'email': self.email,
+    #         'phone': self.phone,
+    #         'subject': self.subject,
+    #         'message': self.message,
+    #         'ticket_type': self.ticket_type.value if self.ticket_type else None,
+    #         'priority': self.priority.value if self.priority else None,
+    #         'status': self.status.value if self.status else None,
+    #         'assigned_to': self.assigned_to,
+    #         'category': self.category,
+    #         'created_at': self.created_at.isoformat() if self.created_at else None,
+    #         'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+    #         'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
+    #         'closed_at': self.closed_at.isoformat() if self.closed_at else None,
+    #         'source': self.source,
+    #         'first_response_at': self.first_response_at.isoformat() if self.first_response_at else None,
+    #         'response_count': self.response_count,
+    #         'tags': self.tags.split(',') if self.tags else [],
+    #         'notes': self.notes
+    #     }
 
     @classmethod
     def generate_ticket_id(cls):
