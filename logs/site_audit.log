@@ -1,0 +1,18 @@
+2025-11-21 18:40:03,894 - auth_routes - INFO - New signup: amy1234obetta@gmail.com
+2025-11-21 18:40:25,133 - email_service - INFO - Email sent to amy1234obetta@gmail.com with subject 'Verify Your Identity - Sitelytics'
+2025-11-21 18:44:25,429 - auth_routes - INFO - Password reset requested for: amy1234obetta@gmail.com
+2025-11-21 18:46:09,758 - auth_routes - INFO - Email verified for: amy1234obetta@gmail.com
+2025-11-21 18:46:55,928 - email_service - INFO - Email sent to amyegeobetta@gmail.com with subject 'Thank you for joining the waitlist'
+2025-11-21 19:11:38,507 - auth_routes - INFO - New signup: amyegeobetta@gmail.com
+2025-11-21 19:11:42,385 - email_service - INFO - Email sent to amyegeobetta@gmail.com with subject 'Verify Your Identity - Sitelytics'
+2025-11-21 19:17:21,503 - auth_routes - INFO - Email verified for: amyegeobetta@gmail.com
+2025-11-21 19:19:53,110 - email_service - INFO - Email sent to bobbyumo02@gmail.com with subject 'Thank you for joining the waitlist'
+2025-11-21 19:35:06,657 - email_service - INFO - Email sent to umoumoy2@gmail.com with subject 'You're on the list! - Sitelytics'
+2025-11-21 19:36:01,845 - auth_routes - INFO - New signup: umoumoy2@gmail.com
+2025-11-21 19:36:05,172 - email_service - INFO - Email sent to umoumoy2@gmail.com with subject 'Verify Your Identity - Sitelytics'
+2025-11-21 19:42:30,708 - auth_routes - INFO - New signup: vivianonyema507@gmail.com
+2025-11-21 19:42:33,935 - email_service - INFO - Email sent to vivianonyema507@gmail.com with subject 'Verify Your Identity - Sitelytics'
+2025-11-21 19:44:09,193 - auth_routes - INFO - Email verified for: vivianonyema507@gmail.com
+2025-11-21 19:44:13,925 - email_service - INFO - Email sent to vivianonyema507@gmail.com with subject 'Welcome to Sitelytics'
+2025-11-21 19:54:19,062 - auth_routes - INFO - New signup: bigmaks0712@gmail.com
+2025-11-21 19:54:22,758 - email_service - INFO - Email sent to bigmaks0712@gmail.com with subject 'Verify Your Identity - Sitelytics'
