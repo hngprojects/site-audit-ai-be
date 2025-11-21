@@ -68,8 +68,9 @@ def test_login_invalid_email():
     
     assert response.status_code == 401
     data = response.json()
-    assert "detail" in data
-    assert "invalid email or password" in data["detail"].lower()
+    assert data["status"] == "error"
+    assert "invalid email or password" in data["message"].lower()
+    assert data["data"] == {}
 
 
 def test_login_invalid_password(create_test_user):
@@ -85,8 +86,9 @@ def test_login_invalid_password(create_test_user):
     
     assert response.status_code == 401
     data = response.json()
-    assert "detail" in data
-    assert "invalid email or password" in data["detail"].lower()
+    assert data["status"] == "error"
+    assert "invalid email or password" in data["message"].lower()
+    assert data["data"] == {}
 
 
 def test_login_missing_email():

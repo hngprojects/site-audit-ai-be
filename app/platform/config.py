@@ -1,60 +1,56 @@
-# app/platform/config.py
-
-import os
-from dotenv import load_dotenv
+from typing import Literal, List
+from pathlib import Path
 from pydantic_settings import BaseSettings
-
-load_dotenv()
 
 
 class Settings(BaseSettings):
-    # Redis Configuration
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # ── App ─────────────────────────────────────
+    APP_NAME: str = "SiteMate AI"
+    ENVIRONMENT: Literal["local", "staging", "production"] = "local"
+    DEBUG: bool = True
 
-    # Rate limits – configurable through env
-    WAITLIST_REGISTER_LIMIT: int = int(os.getenv("WAITLIST_RATE_LIMIT", 5))
-    WAITLIST_STATS_LIMIT: int = int(os.getenv("STATS_RATE_LIMIT", 10))
+    # ── Database ────────────────────────────────
+    DATABASE_URL: str
 
-    # Allow using in-memory limiter for testing
+    # ── Redis Configuration ─────────────────────
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # ── Rate Limits ─────────────────────────────
+    WAITLIST_REGISTER_LIMIT: int = 5
+    WAITLIST_STATS_LIMIT: int = 10
     FORCE_IN_MEMORY_RATE_LIMITER: bool = False
-
-    # Whitelisted IPs
-    WHITELIST_IPS: list[str] = os.getenv("WHITELIST_IPS", "").split(",")
+    WHITELIST_IPS: List[str] = []
 
     @property
-    def RATE_LIMITS(self):
+    def RATE_LIMITS(self) -> dict[str, int]:
         return {
             "/waitlist": self.WAITLIST_REGISTER_LIMIT,
             "/waitlist/stats": self.WAITLIST_STATS_LIMIT,
         }
 
+    # ── Email Configuration ─────────────────────
+    MAIL_MAILER: str
+    MAIL_HOST: str
+    MAIL_PORT: int = 587
+    MAIL_USERNAME: str
+    MAIL_PASSWORD: str
+    MAIL_ENCRYPTION: str
+    MAIL_FROM_ADDRESS: str
+    MAIL_FROM_NAME: str
+
+    # ── JWT / Auth ──────────────────────────────
+    JWT_SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24h
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ALGORITHM: str = "HS256"
+
+    class Config:
+        # Load .env from project root (since config.py is in app/platform/)
+        env_file = Path(__file__).parent.parent.parent / ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+        extra = "ignore"
+
 
 # Instantiate global settings
 settings = Settings()
-
-
-# ======================================================
-#   EXISTING PROJECT SETTINGS (kept from staging branch)
-# ======================================================
-
-# Database
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Email Configuration
-MAIL_MAILER = os.getenv("MAIL_MAILER")
-MAIL_HOST = os.getenv("MAIL_HOST")
-MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
-MAIL_USERNAME = os.getenv("MAIL_USERNAME")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
-MAIL_ENCRYPTION = os.getenv("MAIL_ENCRYPTION")
-MAIL_FROM_ADDRESS = os.getenv("MAIL_FROM_ADDRESS")
-MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME")
-
-# JWT Configuration
-JWT_SECRET_KEY = os.getenv(
-    "JWT_SECRET_KEY", "your-secret-key-change-this-in-production"
-)
-ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")  # 24h
-)
-ALGORITHM = "HS256"

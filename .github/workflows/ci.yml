@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: tests
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: self-hosted
+    env:
+      DATABASE_URL: ${{ secrets.CI_DB }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python with uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python 3.12 and dependencies
+        run: |
+          sudo apt install libpq-dev -y
+          sudo apt install python3.12-venv -y
+          python3.12 -m venv venv
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: |
+          source venv/bin/activate
+          uv add psycopg psycopg2-binary
+          uv sync
+
+      - name: Run tests
+        run: |
+          source venv/bin/activate
+          uv run pytest
+
