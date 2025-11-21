@@ -23,8 +23,13 @@ def send_email(to_email: str, subject: str, body: str):
     """Base function to send email via SMTP"""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = MAIL_FROM_ADDRESS
+    msg["From"] = settings.MAIL_FROM_ADDRESS
     msg["To"] = to_email
+    msg.attach(MIMEText(body, "html"))
+
+    try:
+        if settings.MAIL_ENCRYPTION.upper() == "SSL":
+            server = smtplib.SMTP_SSL(settings.MAIL_HOST, settings.MAIL_PORT)
 
     msg.attach(MIMEText(body, 'html'))
 
