@@ -5,6 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.sites.models.site import Site
 from app.features.sites.schemas.site import SiteCreate
 from sqlalchemy.future import select
+from sqlalchemy import update
+from fastapi import HTTPException, status
+from app.features.sites.models.site import SiteStatus
 
 
 
@@ -24,6 +27,7 @@ def is_valid_domain(url: str) -> bool:
             return False
     hostname = match.group("hostname")
     return "." in hostname and not hostname.startswith(".") and not hostname.endswith(".")
+
 
 async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCreate):
     normalized_url = normalize_url(site_data.root_url)
@@ -47,6 +51,29 @@ async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCr
         raise e
     await db.refresh(new_site)
     return new_site
+
+
+async def soft_delete_user_site_by_id(db: AsyncSession,
+    user_id: str,
+    site_id: str):
+
+    stmt = (
+        update(Site)
+        .where(Site.id == site_id, Site.user_id == user_id)
+        .values(status=SiteStatus.deleted)
+        .returning(Site)
+    )
+
+    result = await db.execute(stmt)
+    site = result.scalars().first()
+
+    if site is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+
+    await db.commit()
+
+    return site
+
 
 async def get_site_by_id(db: AsyncSession, site_id: str, user_id: str):
     # Query the database for the site, ensuring it belongs to the user
