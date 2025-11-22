@@ -44,6 +44,7 @@ jobs:
         run: |
           source venv/bin/activate
           uv add psycopg2
+          uv add alembic-postgresql-enum
           uv sync
 
       - name: Debug env
