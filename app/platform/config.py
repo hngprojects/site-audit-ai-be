@@ -1,6 +1,7 @@
-from pydantic_settings import BaseSettings
-from typing import Literal, Optional
 from pathlib import Path
+from typing import Literal, Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -10,18 +11,18 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str = 'dummy-db-url'
+    DATABASE_URL: str
 
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
     MAIL_HOST: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
-    MAIL_USERNAME: str ='your-email-id'
-    MAIL_PASSWORD: str = 'your-password'
+    MAIL_USERNAME: str = "your-email-id"
+    MAIL_PASSWORD: str = "your-password"
     MAIL_ENCRYPTION: str = "tls"
-    MAIL_FROM_ADDRESS: str = 'example@localhost'
-    MAIL_FROM_NAME: str = 'SiteMate AI'
-    GOOGLE_CLIENT_ID: str = 'dummy-value'
+    MAIL_FROM_ADDRESS: str = "example@localhost"
+    MAIL_FROM_NAME: str = "SiteMate AI"
+    GOOGLE_CLIENT_ID: str = "dummy-value"
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────
@@ -35,5 +36,6 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "ignore"
+
 
 settings = Settings()
