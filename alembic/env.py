@@ -5,6 +5,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 import alembic_postgresql_enum  # noqa
 from sqlalchemy import pool
+import alembic_postgresql_enum  # noqa
 
 from alembic import context
 from dotenv import load_dotenv

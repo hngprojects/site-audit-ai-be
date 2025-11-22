@@ -44,8 +44,18 @@ jobs:
         run: |
           source venv/bin/activate
           uv add psycopg2
+          uv add alembic-postgresql-enum
           uv sync
 
+      - name: Debug env
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is empty!"
+            exit 1
+          else
+            echo "DATABASE_URL is set (value masked)."
+          fi
+    
       - name: Run tests
         run: |
           source venv/bin/activate
