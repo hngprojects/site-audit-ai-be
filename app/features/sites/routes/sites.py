@@ -6,7 +6,7 @@ from app.platform.response import api_response
 from app.features.auth.routes.auth import get_current_user
 from app.features.sites.schemas.site import SiteCreate, SiteResponse
 from app.features.auth.models.user import User
-from app.features.sites.services.site import create_site_for_user, get_site_by_id, soft_delete_user_site_by_id
+from app.features.sites.services.site import create_site_for_user, get_site_by_id, soft_delete_user_site_by_id, get_all_sites_for_user
 
 
 router = APIRouter(prefix="/sites", tags=["Sites"])
@@ -88,20 +88,21 @@ async def soft_delete_site(
         status_code=status.HTTP_200_OK,
     )
 
-from app.features.sites.services.site import get_sites_for_user
-@router.get("",
+
+@router.get(
+    "",
     response_model=dict,
     status_code=status.HTTP_200_OK,
-    summary="Get all sites",
-    description="Retrieve all sites for the authenticated user"
+    summary="Get all sites for the authenticated user",
+    description="Retrieve all non-deleted sites belonging to the authenticated user"
 )
-async def get_sites(
+async def get_all_sites(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    sites = await get_sites_for_user(db, user.id)
+    sites = await get_all_sites_for_user(db, user.id)
     return api_response(
         data=[SiteResponse.from_orm(site) for site in sites],
         message="Sites retrieved successfully",
         status_code=status.HTTP_200_OK
-    )    
+    )
