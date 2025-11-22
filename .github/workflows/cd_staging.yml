@@ -125,9 +125,8 @@ jobs:
                 --non-interactive \
                 --agree-tos \
                 --email $EMAIL \
-                --redirect \
-                --deploy-hook "systemctl reload nginx"
-
+                --redirect 
+                
               sudo nginx -t
               sudo systemctl reload nginx
 
