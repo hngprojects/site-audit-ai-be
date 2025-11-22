@@ -1,9 +1,9 @@
 name: CD Prod
 
 on:
-  pull_request:
-     branches: [main]
-     types: [closed]
+  push:
+    branches:
+      - production
   workflow_dispatch:
 
 concurrency:
