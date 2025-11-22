@@ -87,3 +87,21 @@ async def soft_delete_site(
         message="Site soft deleted successfully",
         status_code=status.HTTP_200_OK,
     )
+
+from app.features.sites.services.site import get_sites_for_user
+@router.get("",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Get all sites",
+    description="Retrieve all sites for the authenticated user"
+)
+async def get_sites(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    sites = await get_sites_for_user(db, user.id)
+    return api_response(
+        data=[SiteResponse.from_orm(site) for site in sites],
+        message="Sites retrieved successfully",
+        status_code=status.HTTP_200_OK
+    )    
