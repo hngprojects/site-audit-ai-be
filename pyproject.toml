@@ -45,6 +45,7 @@ dependencies = [
   "psycopg[binary]>=3.2.12",
   "python-multipart>=0.0.5",
   "psycopg2-binary>=2.9.11",
+  "alembic-postgresql-enum>=1.8.0",
 ]
 
 [tool.setuptools.packages.find]

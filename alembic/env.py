@@ -1,9 +1,9 @@
 import os
-import alembic_postgresql_enum
 from logging.config import fileConfig
 
 
 from sqlalchemy import engine_from_config
+import alembic_postgresql_enum  # noqa
 from sqlalchemy import pool
 
 from alembic import context
