@@ -10,8 +10,9 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str = 'sqlite+aiosqlite:///./site_audit.db'
-    
+    DATABASE_URL: str = 'postgresql+asyncpg://waliyullah_osman_user:qDjCVumhQhZFfPvgsM9zRnGg7FNHmsMt@dpg-d4ggtjili9vc73dk0f60-a.oregon-postgres.render.com/waliyullah_osman'
+
+
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
     MAIL_HOST: str = "smtp.gmail.com"
