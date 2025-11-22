@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.features.auth.routes.auth import get_current_user
-from app.features.sites.schemas.site import SiteCreate, SiteResponse, SiteUpdate
+from app.features.sites.schemas.site import SiteCreate, SiteResponse
 from app.features.auth.models.user import User
 from app.features.sites.services.site import create_site_for_user, soft_delete_user_site_by_id
 
