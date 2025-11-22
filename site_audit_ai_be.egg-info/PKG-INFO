@@ -1,0 +1,152 @@
+Metadata-Version: 2.4
+Name: site-audit-ai-be
+Version: 0.1.0
+Summary: Sitelytics Backend Service
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: aiosqlite>=0.21.0
+Requires-Dist: annotated-doc==0.0.4
+Requires-Dist: annotated-types==0.7.0
+Requires-Dist: anyio==4.11.0
+Requires-Dist: click==8.3.1
+Requires-Dist: fastapi==0.121.2
+Requires-Dist: greenlet==3.2.4
+Requires-Dist: h11==0.16.0
+Requires-Dist: httpx>=0.27.2
+Requires-Dist: idna==3.11
+Requires-Dist: pydantic[email]==2.12.4
+Requires-Dist: pydantic-core==2.41.5
+Requires-Dist: pytest>=8.3.4
+Requires-Dist: pytest-asyncio>=0.25.1
+Requires-Dist: pydantic-settings==2.5.2
+Requires-Dist: python-dotenv==1.2.1
+Requires-Dist: sniffio==1.3.1
+Requires-Dist: sqlalchemy==2.0.44
+Requires-Dist: starlette==0.49.3
+Requires-Dist: typing-extensions==4.15.0
+Requires-Dist: typing-inspection==0.4.2
+Requires-Dist: uvicorn==0.38.0
+Requires-Dist: bcrypt==5.0.0
+Requires-Dist: PyJWT==2.10.1
+Requires-Dist: uuid-extension==0.2.0
+Requires-Dist: email-validator==2.2.0
+Requires-Dist: bcrypt>=5.0.0
+Requires-Dist: pyjwt>=2.10.1
+Requires-Dist: uuid7>=0.1.0
+Requires-Dist: uuid6>=2025.0.1
+Requires-Dist: uuid-extension>=0.2.0
+Requires-Dist: asyncpg>=0.30.0
+Requires-Dist: alembic>=1.17.2
+Requires-Dist: psycopg2-binary>=2.9.11
+Requires-Dist: selenium>=4.18.1
+Requires-Dist: webdriver-manager>=4.0.1
+
+# Site Audit AI Backend
+
+API for website auditing and analysis, built with FastAPI, SQLAlchemy (async), Alembic, and a vertical slice architecture.
+
+## 🚀 Project Structure
+
+```bash
+├── alembic/                # Database migrations
+├── app/
+│   ├── api_routers/        # API router registration
+│   ├── features/           # Vertical slice features (auth, waitlist, health, etc.)
+│   │   └── <feature>/
+│   │       ├── models/     # SQLAlchemy models for this feature
+│   │       ├── routes/     # FastAPI routers/endpoints for this feature
+│   │       ├── schemas/    # Pydantic schemas for this feature
+│   │       ├── services/   # Business logic for this feature
+│   │       └── utils/      # Feature-specific utilities
+│   ├── platform/           # Shared platform services (db, config, email, response, etc.)
+│   └── main.py             # FastAPI app entrypoint
+├── scripts/                # Utility scripts
+├── tests/                  # Unit tests
+├── pyproject.toml          # Project dependencies and metadata
+├── uv.lock                 # Locked dependencies (for uv)
+└── README.md
+```
+
+## 🏗️ Vertical Slice Architecture
+
+- **Features**: Each feature (e.g., auth, waitlist) is self-contained with its own models, routes, schemas, services, and utilities
+- **Platform**: Shared code (database, config, email, response formatting, etc.) lives in the `platform` directory
+- **API Routers**: All feature routers are registered in `v1.py` and included in `main.py`
+
+## 💻 Contributing
+
+### Adding a New Feature
+
+1. Create a new folder under `features` (e.g., `app/features/yourfeature/`)
+2. Add subfolders as needed:
+   - `models/` for SQLAlchemy models
+   - `routes/` for FastAPI routers
+   - `schemas/` for Pydantic schemas
+   - `services/` for business logic
+   - `utils/` for feature-specific helpers
+3. Register your router in `v1.py`
+
+### Working on Platform Services
+
+- Add shared services (e.g., email, database session, config) in the `platform` directory
+- Use these services in your features by importing from `app.platform`
+
+### Where to Find Things
+
+- **Feature endpoints**: `app/features/<feature>/routes/`
+- **Feature models**: `app/features/<feature>/models/`
+- **Feature schemas**: `app/features/<feature>/schemas/`
+- **Feature logic**: `app/features/<feature>/services/`
+- **Shared services**: `app/platform/services/`
+- **Database/session/config**: `app/platform/db/`, `app/platform/config.py`
+- **API router registration**: `app/api_routers/v1.py`
+- **App entrypoint**: `app/main.py`
+
+## 🔧 Setup & Development
+
+### Clone the Repository
+
+```bash
+git clone <repo-url> && cd site-audit-ai-be
+```
+
+### Install Dependencies
+
+```bash
+uv sync
+```
+
+> **Note**: Or use `pip install -e .` if not using uv
+
+### Set Up Environment Variables
+
+Copy `.env.example` to `.env` and fill in your values.
+
+### Run Migrations
+
+```bash
+alembic upgrade head
+```
+
+### Start the Application
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### Run Tests
+
+```bash
+pytest
+```
+
+## 📝 Notes
+
+- Use the vertical slice pattern: keep all code for a feature together
+- Shared logic goes in `platform`, not in individual features
+- Register new routers in `api_routers/v1.py`
+- Keep the codebase modular and easy to navigate
+
+---
+
+Built with ❤️ using FastAPI and modern Python tools
