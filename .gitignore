@@ -12,3 +12,4 @@ static/uploads/profile-pictures/*
 *.db
 alembic/versions
 site_audit_ai_be.egg-info/
+docker-compose.yml

@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, validator, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -38,7 +38,10 @@ class EmailSupportRequest(BaseModel):
 
 class TicketResponse(BaseModel):
     """Schema for ticket response"""
-    id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
     ticket_id: str
     name: str
     email: str
@@ -46,12 +49,9 @@ class TicketResponse(BaseModel):
     message: str
     status: str
     priority: str
-    ticket_type: str
+    ticket_type: str = "EMAIL" #Default value
     created_at: datetime
     updated_at: datetime
-    
-    class Config:
-        orm_mode = True
 
 
 class EmailSupportResponse(BaseModel):
