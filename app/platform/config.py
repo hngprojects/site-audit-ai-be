@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str = 'dummy-db-url'
-
+    DATABASE_URL: str = 'sqlite+aiosqlite:///./site_audit.db'
+    
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
     MAIL_HOST: str = "smtp.gmail.com"
