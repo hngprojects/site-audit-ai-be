@@ -4,20 +4,20 @@ from datetime import datetime
 from app.features.sites.models.site import SiteStatus
 
 class SiteBase(BaseModel):
-    root_url: HttpUrl
+    root_url: str
     display_name: Optional[str] = None
-    favicon_url: Optional[HttpUrl] = None
+    favicon_url: Optional[str] = None
     status: Optional[SiteStatus] = SiteStatus.active
 
 class SiteCreate(BaseModel):
-    root_url: HttpUrl
+    root_url: str
     display_name: Optional[str] = None
-    favicon_url: Optional[HttpUrl] = None
+    favicon_url: Optional[str] = None
     status: Optional[SiteStatus] = SiteStatus.active
 
 class SiteUpdate(BaseModel):
     display_name: Optional[str] = None
-    favicon_url: Optional[HttpUrl] = None
+    favicon_url: Optional[str] = None
     status: Optional[SiteStatus] = None
 
 class SiteResponse(SiteBase):
