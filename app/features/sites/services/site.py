@@ -30,6 +30,13 @@ async def update_site_for_user(db: AsyncSession, user_id: str, site_id: str, sit
             detail="Site not found or access denied"
         )
     
+
+    if site.total_scans == 0 or site.last_scanned_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Site must be scanned before it can be updated"
+        )
+    
     # Build update dict with only provided fields
     update_data = {}
     if site_data.display_name is not None:
