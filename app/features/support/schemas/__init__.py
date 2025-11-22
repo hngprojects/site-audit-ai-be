@@ -1,13 +1,11 @@
 from app.features.support.schemas.support_request import (
     EmailSupportRequest,
-    EmailSupportResponse,
-    TicketStatusUpdate
+    TicketStatusUpdate,
+    ValidationService
 )
 
 __all__ = [
     'EmailSupportRequest',
-    'EmailSupportResponse',
-    'MessageRequest',
-    'MessageResponse',
-    'TicketStatusUpdate'
+    'TicketStatusUpdate',
+    'ValidationService'
 ]

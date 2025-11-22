@@ -2,18 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.platform.db.session import get_db
+from app.platform.response import api_response
 from app.features.support.schemas.support_request import (
     EmailSupportRequest,
-    EmailSupportResponse,
     TicketResponse,
+    ValidationService,
     TicketStatusUpdate
 )
-from app.features.support.services.email_service import ValidationService, TicketService, EmailService
+from app.features.support.services.email_service import TicketService, EmailService
 
 router = APIRouter(prefix="/support/email", tags=["Email Support"])
 
 
-@router.post("/", response_model=EmailSupportResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def create_support_ticket(
     request: EmailSupportRequest,
     db: AsyncSession = Depends(get_db)
@@ -51,11 +52,10 @@ async def create_support_ticket(
         await email_service.send_ticket_notification(ticket)
     except Exception as e:
         print(f"Email notification failed: {e}")
-    
-    return EmailSupportResponse(
-        success=True,
+
+    return api_response(
         message="Support ticket created successfully",
-        ticket=TicketResponse.model_validate(ticket)
+        data=TicketResponse.model_validate(ticket)
     )
 
 
@@ -72,8 +72,9 @@ async def get_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
     
-    return TicketResponse.model_validate(ticket)
-
+    return api_response(
+        data=TicketResponse.model_validate(ticket)
+    )
 
 @router.patch("/{ticket_id}/status")
 async def update_ticket_status(
@@ -93,5 +94,7 @@ async def update_ticket_status(
     
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update status")
-    
-    return {"success": True, "message": "Status updated", "ticket_id": ticket_id}
+
+    return api_response(
+        data=ticket_id
+    )

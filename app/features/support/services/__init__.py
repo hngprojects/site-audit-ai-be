@@ -1,7 +1,6 @@
-from app.features.support.services.email_service import EmailService, ValidationService, TicketService
+from app.features.support.services.email_service import EmailService, TicketService
 
 __all__ = [
     'EmailService',
-    'ValidationService',
     'TicketService'
 ]

@@ -1,37 +1,9 @@
-
-import re
 import os
-from typing import Tuple, Optional
+from typing import Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.features.support.models.support_ticket import SupportTicket, TicketStatus, TicketPriority
-
-
-class ValidationService:
-    """Validation utilities"""
-    
-    @staticmethod
-    def validate_email(email: str) -> Tuple[bool, Optional[str]]:
-        """Validate email format"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        if not re.match(pattern, email):
-            return False, "Invalid email format"
-        return True, None
-    
-    @staticmethod
-    def check_spam(message: str, subject: str) -> Tuple[bool, list]:
-        """Check for spam indicators"""
-        spam_keywords = ['viagra', 'casino', 'lottery', 'click here', 'act now']
-        spam_reasons = []
-        
-        content = (message + subject).lower()
-        for keyword in spam_keywords:
-            if keyword in content:
-                spam_reasons.append(f"Spam keyword: {keyword}")
-        
-        return len(spam_reasons) > 0, spam_reasons
-
 
 class TicketService:
     """Ticket management service"""
@@ -41,11 +13,9 @@ class TicketService:
     
     async def create_ticket(
         self,
-        #name: str,
         email: str,
         subject: str,
         message: str,
-        #phone: Optional[str] = None
     ) -> SupportTicket:
         """Create a new support ticket"""
         
@@ -54,9 +24,7 @@ class TicketService:
         
         ticket = SupportTicket(
             ticket_id=SupportTicket.generate_ticket_id(),
-            #name=name,
             email=email,
-            #phone=phone,
             subject=subject,
             message=message,
             priority=TicketPriority(priority),
@@ -126,10 +94,10 @@ class EmailService:
     """Email notification service"""
     
     def __init__(self):
-        self.smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
-        self.smtp_port = int(os.getenv('SMTP_PORT', 587))
-        self.smtp_username = os.getenv('SMTP_USERNAME', '')
-        self.smtp_password = os.getenv('SMTP_PASSWORD', '')
+        self.smtp_host = os.getenv('MAIL_HOST', 'smtp.gmail.com')
+        self.smtp_port = int(os.getenv('MAIL_PORT', 587))
+        self.smtp_username = os.getenv('MAIL_USERNAME', '')
+        self.smtp_password = os.getenv('MAIL_PASSWORD', '')
         self.admin_email = os.getenv('ADMIN_EMAIL', 'admin@tokugawa.emerj.net')
     
     async def send_ticket_notification(self, ticket: SupportTicket) -> bool:
