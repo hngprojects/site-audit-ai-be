@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.sites.models.site import Site
 from app.features.sites.schemas.site import SiteCreate, SiteUpdate
 from sqlalchemy import select, update
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 
 async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCreate):
@@ -19,10 +19,9 @@ async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCr
     return new_site
 
 
-async def update_user_site_by_id(db: AsyncSession,
+async def soft_delete_user_site_by_id(db: AsyncSession,
     user_id: str,
-    site_id: str,
-    site_data: SiteUpdate):
+    site_id: str):
     
      # Make sure the site exists and belongs to this user
     result = await db.execute(
@@ -35,17 +34,10 @@ async def update_user_site_by_id(db: AsyncSession,
 
     if not site:
         # Either doesn't exist or doesn't belong to this user
-        raise HTTPException(status_code=404, detail="Site not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+
     
-    # Only update fields that were actually sent in the request
-    if site_data.display_name is not None:
-        site.display_name = site_data.display_name
-
-    if site_data.favicon_url is not None:
-        site.favicon_url = str(site_data.favicon_url)
-
-    if site_data.status is not None:
-        site.status = site_data.status
+    site.status = "deleted"
 
     await db.commit()
     await db.refresh(site)

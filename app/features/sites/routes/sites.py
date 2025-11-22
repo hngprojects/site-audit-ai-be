@@ -5,7 +5,7 @@ from app.platform.response import api_response
 from app.features.auth.routes.auth import get_current_user
 from app.features.sites.schemas.site import SiteCreate, SiteResponse, SiteUpdate
 from app.features.auth.models.user import User
-from app.features.sites.services.site import create_site_for_user, update_user_site_by_id
+from app.features.sites.services.site import create_site_for_user, soft_delete_user_site_by_id
 
 router = APIRouter(prefix="/sites", tags=["Sites"])
 
@@ -30,26 +30,25 @@ async def create_site(
 
 
 @router.patch(
-    "/{site_id}",
+    "/{site_id}/soft_delete",
     response_model=dict,
     status_code=status.HTTP_200_OK,
-    summary="Update an existing site",
-    description="Update a site's details for the authenticated user",
+    summary="Soft deletes an existing site",
+    description="Soft deletes a site's details for the authenticated user in order to preserve history",
 )
-async def update_site(
+async def soft_delete_site(
     site_id: str,
-    request: SiteUpdate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    updated_site = await update_user_site_by_id(
+    updated_site = await soft_delete_user_site_by_id(
         db=db,
         user_id=user.id,
         site_id=site_id,
-        site_data=request,
     )
+
     return api_response(
         data=SiteResponse.from_orm(updated_site),
-        message="Site updated successfully",
+        message="Site soft deleted successfully",
         status_code=status.HTTP_200_OK,
     )
