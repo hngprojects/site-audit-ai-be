@@ -46,6 +46,10 @@ jobs:
           uv add psycopg2
           uv sync
 
+      - name: Debug env
+        run: |
+          echo "$DATABASE_URL"
+    
       - name: Run tests
         run: |
           source venv/bin/activate
