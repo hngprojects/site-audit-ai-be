@@ -48,7 +48,12 @@ jobs:
 
       - name: Debug env
         run: |
-          echo "$DATABASE_URL"
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is empty!"
+            exit 1
+          else
+            echo "DATABASE_URL is set (value masked)."
+          fi
     
       - name: Run tests
         run: |
