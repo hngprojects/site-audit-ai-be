@@ -3,7 +3,7 @@ name: CD Prod
 on:
   push:
     branches:
-      - production
+      - main
   workflow_dispatch:
 
 concurrency:
