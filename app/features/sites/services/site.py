@@ -1,8 +1,11 @@
+from fastapi import HTTPException, status
 import re
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.sites.models.site import Site
 from app.features.sites.schemas.site import SiteCreate
+from sqlalchemy.future import select
+
 
 
 def normalize_url(url: str) -> str:
@@ -44,3 +47,16 @@ async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCr
         raise e
     await db.refresh(new_site)
     return new_site
+
+async def get_site_by_id(db: AsyncSession, site_id: str, user_id: str):
+    # Query the database for the site, ensuring it belongs to the user
+    result = await db.execute(
+        select(Site).where(Site.id == site_id, Site.user_id == user_id)
+    )
+    site = result.scalars().first()
+    if not site:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Site not found or does not belong to the user."
+        )
+    return site

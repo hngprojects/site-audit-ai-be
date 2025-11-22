@@ -6,7 +6,8 @@ from app.platform.response import api_response
 from app.features.auth.routes.auth import get_current_user
 from app.features.sites.schemas.site import SiteCreate, SiteResponse
 from app.features.auth.models.user import User
-from app.features.sites.services.site import create_site_for_user
+from app.features.sites.services.site import create_site_for_user, get_site_by_id
+
 
 router = APIRouter(prefix="/sites", tags=["Sites"])
 
@@ -39,4 +40,24 @@ async def create_site(
         data=SiteResponse.from_orm(new_site),
         message="Site created successfully",
         status_code=status.HTTP_201_CREATED
+    )
+
+@router.get(
+    "/{site_id}",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Get site details",
+    description="Retrieve a specific site belonging to the authenticated user"
+
+)
+async def get_site(
+    site_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    site = await get_site_by_id(db, site_id, user.id)
+    return api_response(
+        data=SiteResponse.from_orm(site),
+        message="Site retrieved successfully",
+        status_code=status.HTTP_200_OK
     )
