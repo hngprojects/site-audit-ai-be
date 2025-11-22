@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import Literal, Optional
 from pathlib import Path
-
+from pydantic import Field
 
 class Settings(BaseSettings):
     # ── App ─────────────────────────────────────
@@ -10,7 +10,11 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ────────────────────────────────
-    DATABASE_URL: str = 'postgresql+asyncpg://waliyullah_osman_user:qDjCVumhQhZFfPvgsM9zRnGg7FNHmsMt@dpg-d4ggtjili9vc73dk0f60-a.oregon-postgres.render.com/waliyullah_osman'
+    DATABASE_URL: str = Field(
+    default="sqlite+aiosqlite:///:memory:",
+    env="DATABASE_URL"
+    )
+
 
 
     # ── Email Configuration ─────────────────────
