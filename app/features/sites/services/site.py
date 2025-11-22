@@ -7,13 +7,20 @@ from app.features.sites.schemas.site import SiteCreate
 
 def normalize_url(url: str) -> str:
     url = url.strip()
-    if not re.match(r"^https?://", url):
-        url = "https://" + url
+    if url.startswith("//"):
+        return "http:" + url
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        return "http://" + url
     return url
 
 def is_valid_domain(url: str) -> bool:
-    domain = re.sub(r"^https?://", "", url)
-    return "." in domain
+    match = re.search(r"^[a-zA-Z][a-zA-Z0-9+.-]*://(?P<hostname>[^/:]+)", url)
+    if not match:
+        match = re.search(r"^(?P<hostname>[^/:]+)", url)
+        if not match:
+            return False
+    hostname = match.group("hostname")
+    return "." in hostname and not hostname.startswith(".") and not hostname.endswith(".")
 
 async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCreate):
     normalized_url = normalize_url(site_data.root_url)
