@@ -20,12 +20,9 @@ async def create_support_ticket(
 ):
     """
     Create a new email support ticket
-    
-    - **name**: User's full name
     - **email**: User's email address
     - **subject**: Support request subject
     - **message**: Detailed message
-    - **phone**: Optional phone number
     """
     
     # Validate email
@@ -41,11 +38,11 @@ async def create_support_ticket(
     # Create ticket
     ticket_service = TicketService(db)
     ticket = await ticket_service.create_ticket(
-        name=request.name,
+        #name=request.name,
         email=request.email,
         subject=request.subject,
         message=request.message,
-        phone=request.phone
+        #phone=request.phone
     )
     
     # Send email notification (async in background)

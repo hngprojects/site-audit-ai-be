@@ -6,19 +6,19 @@ from datetime import datetime
 
 class EmailSupportRequest(BaseModel):
     """Schema for email support request"""
-    name: str = Field(..., min_length=2, max_length=255, description="User's full name")
+    #name: str = Field(..., min_length=2, max_length=255, description="User's full name")
     email: EmailStr = Field(..., description="User's email address")
     subject: str = Field(..., min_length=3, max_length=500, description="Support request subject")
     message: str = Field(..., min_length=10, max_length=5000, description="Support request message")
-    phone: Optional[str] = Field(None, max_length=50, description="Optional phone number")
+    #phone: Optional[str] = Field(None, max_length=50, description="Optional phone number")
     
-    @validator('name')
-    def validate_name(cls, v):
-        """Validate name contains only valid characters"""
-        import re
-        if not re.match(r"^[a-zA-Z\s\-'\.]+$", v):
-            raise ValueError('Name contains invalid characters')
-        return v.strip()
+    # @validator('name')
+    # def validate_name(cls, v):
+    #     """Validate name contains only valid characters"""
+    #     import re
+    #     if not re.match(r"^[a-zA-Z\s\-'\.]+$", v):
+    #         raise ValueError('Name contains invalid characters')
+    #     return v.strip()
     
     @validator('subject', 'message')
     def strip_whitespace(cls, v):
@@ -28,11 +28,9 @@ class EmailSupportRequest(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "name": "John Doe",
                 "email": "john.doe@example.com",
                 "subject": "Website Performance Issue",
                 "message": "My website is loading very slowly. Can you help?",
-                "phone": "+1234567890"
             }
         }
 
@@ -43,7 +41,7 @@ class TicketResponse(BaseModel):
 
     id: str
     ticket_id: str
-    name: str
+    #name: str
     email: str
     subject: str
     message: str

@@ -41,11 +41,11 @@ class TicketService:
     
     async def create_ticket(
         self,
-        name: str,
+        #name: str,
         email: str,
         subject: str,
         message: str,
-        phone: Optional[str] = None
+        #phone: Optional[str] = None
     ) -> SupportTicket:
         """Create a new support ticket"""
         
@@ -54,9 +54,9 @@ class TicketService:
         
         ticket = SupportTicket(
             ticket_id=SupportTicket.generate_ticket_id(),
-            name=name,
+            #name=name,
             email=email,
-            phone=phone,
+            #phone=phone,
             subject=subject,
             message=message,
             priority=TicketPriority(priority),
