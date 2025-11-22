@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, status, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.db.session import get_db
 from app.platform.response import api_response
@@ -29,11 +30,11 @@ async def create_site(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(ve)
         )
-    except Exception as e:
-        # Show the actual error for debugging
+    except IntegrityError:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail="Site with this root_url already exists for this user"
         )
     return api_response(
         data=SiteResponse.from_orm(new_site),
