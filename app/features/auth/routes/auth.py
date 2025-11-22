@@ -18,11 +18,14 @@ from app.features.auth.schemas.auth import (
 )
 from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token, generate_otp
-from app.platform.services.email import (
+from app.features.auth.services.email_service import (
+    send_signup_verification,
     send_verification_otp,
     send_password_reset,
     send_account_activation,
+    send_account_deleted
 )
+
 from app.platform.logger import get_logger
 
 logger = get_logger("auth_routes")
