@@ -16,6 +16,7 @@ from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
 from app.features.sites.models.site import Site
 
+
 load_dotenv()
 
 # Get DATABASE_URL and convert async drivers to sync for Alembic
