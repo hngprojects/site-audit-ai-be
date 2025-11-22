@@ -65,7 +65,7 @@ async def get_site(
 
 
 @router.patch(
-    "/{site_id}",
+    "/{site_id}/soft_delete",
     response_model=dict,
     status_code=status.HTTP_200_OK,
     summary="Soft deletes an existing site",
