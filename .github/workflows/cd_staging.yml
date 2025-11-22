@@ -1,0 +1,172 @@
+name: CD Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: true
+
+jobs:
+  staging-deployment:
+    runs-on: self-hosted
+    env:
+      DEPLOY_ENV: staging
+      DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+      DEPLOY_USER: ${{ secrets.STAGING_SSH_USER }}
+      DEPLOY_PATH: ${{ secrets.STAGING_APP_DIR }}
+      SERVICE_NAME: ${{ secrets.STAGING_SERVICE_NAME }}
+      SERVER_NAME: ${{ secrets.STAGING_DOMAIN }}
+      APP_PORT: ${{ secrets.STAGING_APP_PORT }}
+      APP_URL: ${{ secrets.STAGING_APP_URL }}
+      ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+      NGINX_LOG_PREFIX: siteaudit-be-staging
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Write environment file
+        run: |
+          if [ -z "$ENV_FILE" ]; then
+            echo "::error::Missing ENV_FILE secret for $DEPLOY_ENV environment"
+            exit 1
+          fi
+          printf "%s" "$ENV_FILE" > .env
+
+      - name: Prepare config templates
+        env:
+          APP_ROOT: ${{ env.DEPLOY_PATH }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y gettext-base
+          if [ -z "$SERVER_NAME" ] || [ -z "$APP_PORT" ]; then
+            echo "::error::SERVER_NAME or APP_PORT secrets missing for $DEPLOY_ENV"
+            exit 1
+          fi
+          SERVICE_USER_VALUE="${SERVICE_USER:-$DEPLOY_USER}"
+          SERVICE_GROUP_VALUE="${SERVICE_GROUP:-$SERVICE_USER_VALUE}"
+          export SERVER_NAME APP_PORT APP_ROOT NGINX_LOG_PREFIX DEPLOY_ENV
+          export SERVICE_USER="$SERVICE_USER_VALUE"
+          export SERVICE_GROUP="$SERVICE_GROUP_VALUE"
+          export PYTHON_BIN="${APP_ROOT}/.venv/bin/python"
+          envsubst '$SERVER_NAME $APP_PORT $APP_ROOT $NGINX_LOG_PREFIX' < deploy/nginx/site-audit-ai.conf.tpl > deploy/nginx/site-audit-ai.conf
+          envsubst '$SERVICE_USER $SERVICE_GROUP $APP_PORT $PYTHON_BIN $APP_ROOT $DEPLOY_ENV $SERVICE_NAME' < deploy/systemd/site-audit-ai.service.tpl > deploy/systemd/site-audit-ai.service
+
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+            ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Add remote host to known hosts
+        run: |
+          ssh-keyscan -p "${SSH_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Ensure remote directory exists
+        run: |
+          ssh -p "${SSH_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y rsync ssh
+
+      - name: Rsync application to server
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "__pycache__" \
+            --exclude ".venv" \
+            --exclude "alembic/versions" \
+            -e "ssh -p ${SSH_PORT:-22}" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
+
+      - name: Copy nginx config
+        run: |
+          scp -P "${SSH_PORT:-22}" deploy/nginx/site-audit-ai.conf "$DEPLOY_USER@$DEPLOY_HOST:/tmp/site-audit-ai.conf"
+
+      - name: Copy systemd service
+        run: |
+          scp -P "${SSH_PORT:-22}" deploy/systemd/site-audit-ai.service "$DEPLOY_USER@$DEPLOY_HOST:/tmp/site-audit-ai.service"
+
+      - name: Install dependencies, run migrations, restart services
+        run: |
+          ssh -p "${SSH_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' SERVICE_NAME='$SERVICE_NAME' DEPLOY_ENV='$DEPLOY_ENV' APP_PORT='$APP_PORT' bash -s" <<'EOF'
+              set -euo pipefail
+              export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+              APP_DIR="${DEPLOY_PATH}"
+              SERVICE="${SERVICE_NAME}"
+              if [ ! -d "$APP_DIR" ]; then
+                mkdir -p "$APP_DIR"
+              fi
+              cd "$APP_DIR"
+
+              sudo apt-get update -y
+              sudo apt-get install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx curl libpq-dev
+
+              if ! command -v uv >/dev/null 2>&1; then
+                curl -LsSf https://astral.sh/uv/install.sh | sh
+                export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+              fi
+
+              python3.12 -m venv venv
+              source venv/bin/activate     
+              uv sync 
+              mkdir -p alembic/versions
+              uv run alembic revision --autogenerate -m "staging deployment migration"
+              uv run alembic upgrade head
+              
+              NGINX_SITE="/etc/nginx/sites-available/${SERVICE}.conf"
+              sudo mv /tmp/site-audit-ai.conf "$NGINX_SITE"
+              sudo ln -sf "$NGINX_SITE" "/etc/nginx/sites-enabled/${SERVICE}.conf"
+              sudo nginx -t
+              sudo systemctl reload nginx
+
+              sudo mv /tmp/site-audit-ai.service "/etc/systemd/system/${SERVICE}.service"
+              sudo chown root:root "/etc/systemd/system/${SERVICE}.service"
+              sudo systemctl daemon-reload
+              sudo systemctl enable "${SERVICE}"
+              sudo systemctl restart "$SERVICE"
+
+              LOCAL_HEALTH_URL="http://127.0.0.1:${APP_PORT}/health"
+              echo "Checking local health endpoint at $LOCAL_HEALTH_URL"
+              for attempt in $(seq 1 5); do
+                STATUS_CODE=$(curl -sk -o /tmp/local_health_response -w "%{http_code}" "$LOCAL_HEALTH_URL" || echo "000")
+                if [ "$STATUS_CODE" = "200" ]; then
+                  echo "Local health check succeeded:"
+                  cat /tmp/local_health_response
+                  rm -f /tmp/local_health_response
+                  break
+                fi
+                echo "Local attempt $attempt failed (status $STATUS_CODE). Retrying..."
+                sleep 3
+              done
+          EOF
+
+      - name: Verify health endpoint
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::APP_URL secret missing for $DEPLOY_ENV"
+            exit 1
+          fi
+          HEALTH_URL="${APP_URL%/}/health"
+          echo "Checking $HEALTH_URL"
+          for attempt in $(seq 1 5); do
+            STATUS_CODE=$(curl -sk -o /tmp/health_response -w "%{http_code}" "$HEALTH_URL" || echo "000")
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "Health check succeeded:"
+              cat /tmp/health_response
+              rm -f /tmp/health_response
+              exit 0
+            fi
+            echo "Attempt $attempt failed (status $STATUS_CODE). Retrying..."
+            sleep 5
+          done
+          echo "::error::Service did not pass health check"
+          cat /tmp/health_response 2>/dev/null || true
+          exit 1
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          echo "Deployed $GITHUB_SHA to $DEPLOY_ENV (${APP_URL})"
