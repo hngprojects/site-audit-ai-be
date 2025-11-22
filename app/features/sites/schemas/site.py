@@ -1,17 +1,3 @@
-from pydantic import BaseModel, HttpUrl
-from datetime import datetime
-from typing import Optional
-
-class SiteBase(BaseModel):
-    url: HttpUrl
-    name: Optional[str] = None
-
-class SiteCreate(SiteBase):
-    pass
-
-class SiteResponse(SiteBase):
-    id: str
-    user_id: str
 from pydantic import BaseModel, HttpUrl, Field
 from typing import Optional
 from datetime import datetime
