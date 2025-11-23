@@ -101,7 +101,7 @@ jobs:
                 mkdir -p "$APP_DIR"
               fi
               cd "$APP_DIR"
-
+              export SERVER_NAME APP_PORT APP_ROOT NGINX_LOG_PREFIX DEPLOY_ENV EMAIL
               sudo apt-get update -y
               sudo apt-get install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx curl libpq-dev
 
