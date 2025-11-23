@@ -8,7 +8,9 @@ __pycache__
 .ruff_cache
 local/
 static/uploads/profile-pictures/*
-!static/uploads/profile-pictures/.gitkeep
+static/uploads/profile-pictures/.gitkeep
 *.db
+local/
+logs/
 alembic/versions
 site_audit_ai_be.egg-info/

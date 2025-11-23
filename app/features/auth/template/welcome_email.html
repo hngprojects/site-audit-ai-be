@@ -1,0 +1,17 @@
+{% extends "base_email.html" %}
+
+{% block title %}You're on the list!{% endblock %}
+
+{% block content %}
+    <div class="text-center">
+        <h1>You're on the list!</h1>
+    </div>
+    
+    <p>Hi {{ first_name }},</p>
+    <p>Thanks for joining the waitlist. We are building the fastest way to audit and fix your website using AI, without the technical hassle.</p>
+    <p>We will notify you as soon as we open up spots for our beta launch.</p>
+
+    <div class="text-center">
+        <a href="{{ dashboard_url }}" class="btn">Visit Dashboard</a>
+    </div>
+{% endblock %}
