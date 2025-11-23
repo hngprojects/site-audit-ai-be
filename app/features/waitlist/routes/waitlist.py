@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.platform.db.session import get_db
 from app.features.waitlist.schemas.waitlist import WaitlistIn, WaitlistOut, WaitlistResponse
 from app.features.waitlist.services.waitlist import add_to_waitlist
-from app.features.waitlist.utils.emailer import send_thank_you_email
+from app.features.auth.services.email_service import send_welcome_email as send_thank_you_email
 from app.platform.response import api_response
 
 router = APIRouter()

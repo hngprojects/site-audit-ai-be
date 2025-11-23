@@ -16,11 +16,19 @@ from app.features.auth.schemas.auth import (
     ChangePasswordRequest,
     VerifyEmailRequest
 )
-from app.features.auth.services.auth_service import AuthService,send_password_reset_email
+from app.features.auth.services.auth_service import AuthService
 from app.features.auth.utils.security import decode_access_token, generate_otp
-from app.platform.services.email import send_verification_otp
+from app.features.auth.services.email_service import (
+    send_signup_verification,
+    send_verification_otp,
+    send_password_reset,
+    send_account_activation,
+    send_account_deleted
+)
 
+from app.platform.logger import get_logger
 
+logger = get_logger("auth_routes")
 blacklisted_tokens = set()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 security = HTTPBearer()
@@ -45,13 +53,15 @@ async def signup(
     """
     auth_service = AuthService(db)
     token_response, otp = await auth_service.register_user(request)
-
-    print(f"OTP for {request.email}: {otp}")
-
+    
+    logger.info(f"New signup: {request.email}")
+    
+    user_name = getattr(request, "first_name", request.username)
+    
     background_tasks.add_task(
         send_verification_otp,
         to_email=request.email,
-        username=request.username,
+        first_name=request.username,
         otp=otp
     )
     
@@ -79,6 +89,7 @@ async def login(
     """
     auth_service = AuthService(db)
     token_response = await auth_service.login_user(request)
+    
 
     return api_response(
         data=token_response,
@@ -220,6 +231,7 @@ async def reset_password(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     """Reset password using valid token"""
+    logger.info(f"Password reset requested for: {user.email}")
     token = credentials.credentials
     if token in blacklisted_tokens:
         raise HTTPException(
@@ -255,6 +267,8 @@ async def reset_password(
 )
 async def verify_email(
     request: VerifyEmailRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -262,6 +276,15 @@ async def verify_email(
     """
     auth_service = AuthService(db)
     await auth_service.verify_email_otp(request.email, request.otp)
+    display_name = user.first_name if user.first_name else user.username
+    logger.info(f"Email verified for: {request.email}")
+    
+    background_tasks.add_task(
+        send_account_activation,
+        to_email=user.email,
+        first_name=display_name
+    )
+    
     return api_response(
         message="Email verified successfully.",
         status_code=status.HTTP_200_OK
@@ -292,9 +315,14 @@ async def forgot_password(
         user.verification_otp=verification_otp
         user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
         await db.commit()
-
+        logger.info(f"Password reset requested for: {user.email}")
         # Send reset email in background
-        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
+        background_tasks.add_task(
+            send_password_reset,      
+            to_email=user.email,
+            first_name=user.first_name, 
+            otp=verification_otp
+        )
 
         return api_response(
             data={"email": request.email},
@@ -332,7 +360,12 @@ async def resend_reset_token(
         await db.commit()
 
         # Send new reset email
-        background_tasks.add_task(send_password_reset_email, request.email, verification_otp)
+        background_tasks.add_task(
+            send_password_reset,
+            to_email=user.email,
+            first_name=user.first_name,
+            otp=verification_otp
+        )
 
         return api_response(
             message="New password reset email sent. Link expires in 2 minutes.",

@@ -29,6 +29,19 @@ wheels = [
 ]
 
 [[package]]
+name = "alembic-postgresql-enum"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "alembic" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/04/e465cb5c051fb056b7fadda7667b3e1fb4d32d7f19533e3bbff071c73788/alembic_postgresql_enum-1.8.0.tar.gz", hash = "sha256:132cd5fdc4a2a0b6498f3d89ea1c7b2a5ddc3281ddd84edae7259ec4c0a215a0", size = 15858, upload-time = "2025-07-20T12:25:50.626Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/80/4e6e841f9a0403b520b8f28650c2cdf5905e25bd4ff403b43daec580fed3/alembic_postgresql_enum-1.8.0-py3-none-any.whl", hash = "sha256:0e62833f8d1aca2c58fa09cae1d4a52472fb32d2dde32b68c84515fffcf401d5", size = 23697, upload-time = "2025-07-20T12:25:49.048Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -428,6 +441,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
+]
+
+[[package]]
+name = "jinja2"
+version = "3.1.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
 ]
 
 [[package]]
@@ -856,6 +881,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-multipart"
+version = "0.0.20"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/87/f44d7c9f274c7ee665a29b885ec97089ec5dc034c7f3fafa03da9e39a09e/python_multipart-0.0.20.tar.gz", hash = "sha256:8dd0cab45b8e23064ae09147625994d090fa46f5b0d1e13af944c331a7fa9d13", size = 37158, upload-time = "2024-12-16T19:45:46.972Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/58/38b5afbc1a800eeea951b9285d3912613f2603bdf897a4ab0f4bd7f405fc/python_multipart-0.0.20-py3-none-any.whl", hash = "sha256:8a62d3a8335e06589fe01f2a3e178cdcc632f3fbe0d492ad9ee0ec35aab1f104", size = 24546, upload-time = "2024-12-16T19:45:44.423Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -889,6 +923,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
+    { name = "alembic-postgresql-enum" },
     { name = "annotated-doc" },
     { name = "annotated-types" },
     { name = "anyio" },
@@ -902,6 +937,7 @@ dependencies = [
     { name = "h11" },
     { name = "httpx" },
     { name = "idna" },
+    { name = "jinja2" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg2-binary" },
     { name = "pydantic", extra = ["email"] },
@@ -911,6 +947,7 @@ dependencies = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "requests" },
     { name = "sniffio" },
     { name = "sqlalchemy" },
@@ -933,11 +970,11 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "alembic", specifier = ">=1.17.2" },
+    { name = "alembic-postgresql-enum", specifier = ">=1.8.0" },
     { name = "annotated-doc", specifier = "==0.0.4" },
     { name = "annotated-types", specifier = "==0.7.0" },
     { name = "anyio", specifier = "==4.11.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
-    { name = "bcrypt", specifier = "==5.0.0" },
     { name = "bcrypt", specifier = ">=5.0.0" },
     { name = "click", specifier = "==8.3.1" },
     { name = "email-validator", specifier = "==2.2.0" },
@@ -945,21 +982,19 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.43.0" },
     { name = "greenlet", specifier = "==3.2.4" },
     { name = "h11", specifier = "==0.16.0" },
-    { name = "httpx", specifier = ">=0.27.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "idna", specifier = "==3.11" },
+    { name = "jinja2", specifier = ">=3.1.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.12" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
     { name = "pydantic", extras = ["email"], specifier = "==2.12.4" },
     { name = "pydantic-core", specifier = "==2.41.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pyjwt", specifier = "==2.10.1" },
-    { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "pytest", specifier = ">=8.3.4" },
-    { name = "pytest", specifier = ">=9.0.1" },
     { name = "pytest-asyncio", specifier = ">=0.25.1" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "python-dotenv", specifier = "==1.2.1" },
+    { name = "python-multipart", specifier = ">=0.0.5" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "sniffio", specifier = "==1.3.1" },
     { name = "sqlalchemy", specifier = "==2.0.44" },
