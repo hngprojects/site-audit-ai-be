@@ -87,3 +87,9 @@ async def get_site_by_id(db: AsyncSession, site_id: str, user_id: str):
             detail="Site not found or does not belong to the user."
         )
     return site
+
+async def get_all_sites_for_user(db: AsyncSession, user_id: str):
+    result = await db.execute(
+        select(Site).where(Site.user_id == user_id, Site.status != SiteStatus.deleted)
+    )
+    return result.scalars().all()
