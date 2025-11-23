@@ -1,8 +1,11 @@
 import os
 from logging.config import fileConfig
 
+
 from sqlalchemy import engine_from_config
+import alembic_postgresql_enum  # noqa
 from sqlalchemy import pool
+import alembic_postgresql_enum  # noqa
 
 from alembic import context
 from dotenv import load_dotenv
@@ -15,6 +18,7 @@ from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
 from app.features.support.models import SupportTicket
+from app.features.sites.models.site import Site 
 
 load_dotenv()
 
