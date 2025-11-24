@@ -12,8 +12,9 @@ async def enumerate_website(data: DiscoveryRequest):
         domain = data.url.host
         subdomains = DiscoveryService.enumerate_subdomains(domain)
         pages = DiscoveryService.discover_pages(str(data.url))
+        all_urls = pages + [f"https://{sub}" for sub in subdomains if not sub.startswith("www.")]
         important_pages = DiscoveryService.filter_important_pages(
-            pages,
+            all_urls,
             data.top_n
         )
         response_data = DiscoveryResponse(
