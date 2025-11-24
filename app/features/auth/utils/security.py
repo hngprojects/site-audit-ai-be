@@ -1,20 +1,22 @@
-import bcrypt
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
-import secrets
+
+import bcrypt
 import jwt
-import os
-import hashlib
+
 from app.platform.config import settings
 
+
 def hash_password(password: str) -> str:
-    password_hash = hashlib.sha256(password.encode('utf-8')).digest()
-    
+    password_hash = hashlib.sha256(password.encode("utf-8")).digest()
+
     # Generate salt and hash with bcrypt
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password_hash, salt)
-    
-    return hashed.decode('utf-8')
+
+    return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -23,11 +25,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Uses SHA-256 pre-hashing to match the hashing method.
     """
     # Pre-hash with SHA-256 to match the hashing method
-    password_hash = hashlib.sha256(plain_password.encode('utf-8')).digest()
-    
-    # Verify with bcrypt
-    return bcrypt.checkpw(password_hash, hashed_password.encode('utf-8'))
+    password_hash = hashlib.sha256(plain_password.encode("utf-8")).digest()
 
+    # Verify with bcrypt
+    return bcrypt.checkpw(password_hash, hashed_password.encode("utf-8"))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -54,7 +55,6 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
     return encoded_jwt
 
 
-
 def decode_access_token(token: str) -> dict:
     """Decode and verify a JWT access token"""
     try:
@@ -64,6 +64,7 @@ def decode_access_token(token: str) -> dict:
         raise ValueError("Token has expired")
     except jwt.PyJWTError:
         raise ValueError("Invalid token")
+
 
 def decode_refresh_token(token: str) -> dict:
     """Decode and verify a JWT refresh token"""
@@ -85,4 +86,4 @@ def generate_verification_token() -> str:
 
 def generate_otp() -> str:
     """Generate a 6-digit OTP for email verification"""
-    return ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+    return "".join([str(secrets.randbelow(10)) for _ in range(6)])

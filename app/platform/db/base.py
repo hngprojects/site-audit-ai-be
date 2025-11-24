@@ -1,11 +1,10 @@
-import uuid
 import sqlalchemy
-import sqlalchemy
+from sqlalchemy import Column, String
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import UUID, Column, String
 from uuid_extension import uuid7
 
 Base = declarative_base()
+
 
 class BaseModel(Base):
     __abstract__ = True
@@ -19,6 +18,7 @@ class BaseModel(Base):
         onupdate=sqlalchemy.func.now(),
         nullable=False,
     )
+
 
 # Note: Models will import this Base. Do not import models here to avoid circular imports.
 # Import models in alembic/env.py instead for migrations.
