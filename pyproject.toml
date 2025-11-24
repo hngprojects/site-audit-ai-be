@@ -44,6 +44,7 @@ dependencies = [
   "selenium>=4.38.0",
   "zai-sdk>=0.0.4.2",
   "openai>=2.8.1",
+  "pre-commit>=4.5.0",
 ]
 
 [tool.setuptools.packages.find]

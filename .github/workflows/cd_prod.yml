@@ -86,11 +86,14 @@ jobs:
       - name: Install dependencies, run migrations, restart services
         run: |
           ssh -p "${SSH_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' SERVICE_NAME='$SERVICE_NAME' DEPLOY_ENV='$DEPLOY_ENV' APP_PORT='$APP_PORT' bash -s" <<'EOF'
+            "DEPLOY_PATH='$DEPLOY_PATH' SERVER_NAME='$SERVER_NAME' EMAIL='$EMAIL' SERVICE_NAME='$SERVICE_NAME' DEPLOY_ENV='$DEPLOY_ENV' APP_PORT='$APP_PORT' bash -s" <<'EOF'
               set -euo pipefail
               export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
               APP_DIR="${DEPLOY_PATH}"
               SERVICE="${SERVICE_NAME}"
+              SERVER_NAME="${SERVER_NAME}"
+              EMAIL="${EMAIL}"
+              
               if [ ! -d "$APP_DIR" ]; then
                 mkdir -p "$APP_DIR"
               fi

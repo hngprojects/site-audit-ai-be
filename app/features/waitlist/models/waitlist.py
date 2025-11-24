@@ -1,5 +1,7 @@
-from sqlalchemy import Column, Integer, String
-from app.platform.db.base import Base, BaseModel
+from sqlalchemy import Column, String
+
+from app.platform.db.base import BaseModel
+
 
 class Waitlist(BaseModel):
     __tablename__ = "waitlist"

@@ -1,24 +1,22 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from fastapi import HTTPException, status
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
-import logging
 
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.auth.models.user import User
-from app.features.auth.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
+from app.features.auth.schemas.auth import LoginRequest, SignupRequest, TokenResponse, UserResponse
 from app.features.auth.utils.security import (
-    generate_verification_token,
-    hash_password,
-    verify_password,
     create_access_token,
     create_refresh_token,
-    generate_otp
+    generate_otp,
+    hash_password,
+    verify_password,
 )
 from app.platform.services.email import send_email
-
 
 logger = logging.getLogger(__name__)
 
@@ -34,20 +32,17 @@ class AuthService:
         )
         if email_check.scalar_one_or_none():
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
             )
-        
+
         username_check = await self.db.execute(
             select(User).where(User.username == request.username.lower())
         )
         if username_check.scalar_one_or_none():
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken"
             )
         
-
         otp = generate_otp()
         otp_expiry = datetime.utcnow() + timedelta(minutes=10) 
         
@@ -57,9 +52,9 @@ class AuthService:
             password_hash=hash_password(request.password),
             verification_otp=otp,
             otp_expires_at=otp_expiry,
-            is_email_verified=False
+            is_email_verified=False,
         )
-        
+
         try:
             self.db.add(new_user)
             await self.db.commit()
@@ -67,8 +62,7 @@ class AuthService:
         except IntegrityError:
             await self.db.rollback()
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email or username already exists"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Email or username already exists"
             )
 
         access_token = create_access_token(
@@ -83,14 +77,14 @@ class AuthService:
             email=new_user.email,
             username=new_user.username,
             is_email_verified=new_user.is_email_verified,
-            created_at=new_user.created_at
+            created_at=new_user.created_at,
         )
 
         token_response = TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            user=user_response
+            user=user_response,
         )
 
         return token_response, new_user.verification_otp
@@ -101,26 +95,20 @@ class AuthService:
             select(User).where(User.email == request.email.lower())
         )
         user = result.scalar_one_or_none()
-        
+
         if not user or not verify_password(request.password, user.password_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        # Update last login
+
         user.last_login = datetime.utcnow()
         await self.db.commit()
         await self.db.refresh(user)
-        
-        # Generate access and refresh tokens
-        access_token = create_access_token(
-            data={"sub": str(user.id), "email": user.email}
-        )
-        refresh_token = create_refresh_token(
-            data={"sub": str(user.id), "email": user.email}
-        )
+
+        access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
+        refresh_token = create_refresh_token(data={"sub": str(user.id), "email": user.email})
 
         # Prepare response - convert UUID to string for Pydantic validation
         user_response = UserResponse(
@@ -128,48 +116,41 @@ class AuthService:
             email=user.email,
             username=user.username,
             is_email_verified=user.is_email_verified,
-            created_at=user.created_at
+            created_at=user.created_at,
         )
 
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            user=user_response
+            user=user_response,
         )
 
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
         """Get user by ID (accepts UUID string)"""
-        result = await self.db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
         """Get user by email"""
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         return result.scalar_one_or_none()
 
-    async def update_profile(self, user_id: str, first_name: Optional[str], last_name: Optional[str]) -> User:
+    async def update_profile(
+        self, user_id: str, first_name: Optional[str], last_name: Optional[str]
+    ) -> User:
         """Update user profile information (first_name and last_name)"""
-        result = await self.db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
-        
+
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
         if first_name is not None:
             user.first_name = first_name
         if last_name is not None:
             user.last_name = last_name
-        
+
         await self.db.commit()
         await self.db.refresh(user)
         return user
@@ -177,27 +158,23 @@ class AuthService:
     async def verify_otp(self, email: str, otp: str) -> bool:
         """Verify that the reset token is valid and not expired"""
         # Find user by email
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         user = result.scalar_one_or_none()
 
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         # Check if token matches and hasn't expired
-        if (user.verification_otp != otp or
-            not user.otp_expires_at or
-            user.otp_expires_at < datetime.utcnow()):
+        if (
+            user.verification_otp != otp
+            or not user.otp_expires_at
+            or user.otp_expires_at < datetime.utcnow()
+        ):
             logger.warning(
                 f"Password reset verification failed - invalid or expired OTP - user: {user.id}, email: {email}"
             )
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset token"
             )
 
         return True
@@ -205,16 +182,11 @@ class AuthService:
     async def update_password(self, email: str, new_password: str) -> None:
         """Update user password and clear reset token"""
         # Find user by email
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         user = result.scalar_one_or_none()
 
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         # Hash new password and update
         user.password_hash = hash_password(new_password)
@@ -223,13 +195,11 @@ class AuthService:
 
         await self.db.commit()
         await self.db.refresh(user)
-        
+
         logger.info(f"Password reset successful - user: {user.id}, email: {email}")
 
     async def clear_reset_token(self, email: str) -> None:
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         user = result.scalar_one_or_none()
 
         if user:
@@ -238,27 +208,21 @@ class AuthService:
             await self.db.commit()
 
     async def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
-        result = await self.db.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
 
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         if not verify_password(current_password, user.password_hash):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect"
             )
 
         if current_password == new_password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password must be different from current password"
+                detail="New password must be different from current password",
             )
 
         user.password_hash = hash_password(new_password)
@@ -266,9 +230,7 @@ class AuthService:
         await self.db.refresh(user)
 
     async def verify_email_otp(self, email: str, otp: str) -> None:
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -286,33 +248,27 @@ class AuthService:
         await self.db.commit()
         await self.db.refresh(user)
 
-    async def resend_verification_code(self, email:str) -> tuple[str, str]:
+    async def resend_verification_code(self, email: str) -> tuple[str, str]:
         """Resend verification code with rate limiting"""
-        result = await self.db.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.db.execute(select(User).where(User.email == email.lower()))
         user = result.scalar_one_or_none()
 
         logger.info(f"Resend verification attempt for email: {email}")
 
         if not user:
             logger.warning(f"Resend verification failed - email not found: {email}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Email not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email not found")
 
         if user.is_email_verified:
             logger.warning(f"Resend verification failed - email already verified: {email}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already verified"
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already verified"
             )
 
         now = datetime.utcnow()
 
         if user.otp_last_resent_at:
-            time_since_last_resend = (now  - user.otp_last_resent_at).total_seconds()
+            time_since_last_resend = (now - user.otp_last_resent_at).total_seconds()
             if time_since_last_resend < 60:
                 remaining_seconds = int(60 - time_since_last_resend)
                 logger.warning(
@@ -321,7 +277,7 @@ class AuthService:
                 )
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Please wait {remaining_seconds} seconds before requesting a new OTP."
+                    detail=f"Please wait {remaining_seconds} seconds before requesting a new OTP.",
                 )
 
         # Rate count if last resend was more than an hour ago
@@ -337,7 +293,7 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="You have exceeded the maximum number of OTP resend attempts. Please try again later."
+                detail="You have exceeded the maximum number of OTP resend attempts. Please try again later.",
             )
 
         # Generate new OTP

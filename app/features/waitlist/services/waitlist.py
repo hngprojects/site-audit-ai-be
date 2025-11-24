@@ -1,7 +1,9 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
 from app.features.waitlist.models.waitlist import Waitlist
+
 
 async def add_to_waitlist(db: AsyncSession, name: str, email: str):
     result = await db.execute(select(Waitlist).where(Waitlist.email == email))

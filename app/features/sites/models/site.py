@@ -3,10 +3,17 @@ from sqlalchemy.orm import relationship
 from app.platform.db.base import BaseModel
 import enum
 
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import relationship
+
+from app.platform.db.base import BaseModel
+
+
 class SiteStatus(enum.Enum):
     active = "active"
     archived = "archived"
     deleted = "deleted"
+
 
 class Site(BaseModel):
     """

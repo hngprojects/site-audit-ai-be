@@ -1,14 +1,13 @@
-from fastapi import HTTPException, status
 import re
+
+from fastapi import HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.features.sites.models.site import Site
-from app.features.sites.schemas.site import SiteCreate
 from sqlalchemy.future import select
-from sqlalchemy import update
-from fastapi import HTTPException, status
-from app.features.sites.models.site import SiteStatus
 
+from app.features.sites.models.site import Site, SiteStatus
+from app.features.sites.schemas.site import SiteCreate
 
 
 def normalize_url(url: str) -> str:
@@ -18,6 +17,7 @@ def normalize_url(url: str) -> str:
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
         return "http://" + url
     return url
+
 
 def is_valid_domain(url: str) -> bool:
     match = re.search(r"^[a-zA-Z][a-zA-Z0-9+.-]*://(?P<hostname>[^/:]+)", url)
@@ -53,10 +53,7 @@ async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCr
     return new_site
 
 
-async def soft_delete_user_site_by_id(db: AsyncSession,
-    user_id: str,
-    site_id: str):
-
+async def soft_delete_user_site_by_id(db: AsyncSession, user_id: str, site_id: str):
     stmt = (
         update(Site)
         .where(Site.id == site_id, Site.user_id == user_id)
@@ -77,16 +74,15 @@ async def soft_delete_user_site_by_id(db: AsyncSession,
 
 async def get_site_by_id(db: AsyncSession, site_id: str, user_id: str):
     # Query the database for the site, ensuring it belongs to the user
-    result = await db.execute(
-        select(Site).where(Site.id == site_id, Site.user_id == user_id)
-    )
+    result = await db.execute(select(Site).where(Site.id == site_id, Site.user_id == user_id))
     site = result.scalars().first()
     if not site:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Site not found or does not belong to the user."
+            detail="Site not found or does not belong to the user.",
         )
     return site
+
 
 async def get_all_sites_for_user(db: AsyncSession, user_id: str):
     result = await db.execute(

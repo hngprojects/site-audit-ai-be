@@ -1,7 +1,10 @@
-from fastapi import Request, status
-from fastapi.exceptions import RequestValidationError, HTTPException, StarletteHTTPException
-from app.platform.response import api_response
 import logging
+
+from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError, StarletteHTTPException
+
+from app.platform.response import api_response
+
 
 def add_exception_handlers(app):
     @app.exception_handler(StarletteHTTPException)
