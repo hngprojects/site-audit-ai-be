@@ -32,8 +32,7 @@ def send_email(to_email: str, subject: str, body: str):
 
     try:
         port = settings.MAIL_PORT
-
-        logger.info(f" Connecting to {settings.MAIL_HOST}:{port}...")
+        
         if port == 465:
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL(settings.MAIL_HOST, port, context=context) as server:
@@ -50,7 +49,6 @@ def send_email(to_email: str, subject: str, body: str):
                 server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
                 server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
 
-        logger.info(f"Email successfully sent to {to_email}")
 
     except Exception as e:
         logger.error(f"CRITICAL EMAIL ERROR: {str(e)}")

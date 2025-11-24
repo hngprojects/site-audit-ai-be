@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = "dummy-value"
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 
+    GLM_API_URL: Optional[str] = None
+    GLM_API_KEY: Optional[str] = None
+
+    OPENROUTER_API_KEY: Optional[str] = None
+
     # ── JWT / Auth ──────────────────────────────
     JWT_SECRET_KEY: str = "your-secret-key-change-this-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
