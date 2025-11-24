@@ -1,6 +1,4 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
-
-# from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.types import TypeDecorator, CHAR
 from sqlalchemy.sql import func
@@ -16,7 +14,7 @@ class User(BaseModel):
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(
         String(255), nullable=True
-    )  # make nullable to support OAuth-only accounts
+    ) 
 
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)

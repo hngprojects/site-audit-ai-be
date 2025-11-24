@@ -29,7 +29,6 @@ class AuthService:
 
     async def register_user(self, request: SignupRequest) -> tuple[TokenResponse, str]:
 
-        # Check if email already exists
         email_check = await self.db.execute(
             select(User).where(User.email == request.email.lower())
         )
@@ -39,7 +38,6 @@ class AuthService:
                 detail="Email already registered"
             )
         
-        # Check if username already exists
         username_check = await self.db.execute(
             select(User).where(User.username == request.username.lower())
         )
@@ -49,9 +47,9 @@ class AuthService:
                 detail="Username already taken"
             )
         
-        # Create new user with OTP
+
         otp = generate_otp()
-        otp_expiry = datetime.utcnow() + timedelta(minutes=10)  # OTP valid for 10 minutes
+        otp_expiry = datetime.utcnow() + timedelta(minutes=10) 
         
         new_user = User(
             email=request.email.lower(),
@@ -72,8 +70,7 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email or username already exists"
             )
-        
-        # Generate access and refresh tokens
+
         access_token = create_access_token(
             data={"sub": str(new_user.id), "email": new_user.email}
         )
@@ -81,7 +78,6 @@ class AuthService:
             data={"sub": str(new_user.id), "email": new_user.email}
         )
 
-        # Prepare response - convert UUID to string for Pydantic validation
         user_response = UserResponse(
             id=str(new_user.id),
             email=new_user.email,
@@ -97,12 +93,10 @@ class AuthService:
             user=user_response
         )
 
-        # Return token response and OTP (for background email sending)
         return token_response, new_user.verification_otp
 
 
     async def login_user(self, request: LoginRequest) -> TokenResponse:  
-        # Find user by email
         result = await self.db.execute(
             select(User).where(User.email == request.email.lower())
         )
@@ -315,7 +309,6 @@ class AuthService:
                 detail="Email is already verified"
             )
 
-        # Rate limiting: max 5 resends within 1 hour
         now = datetime.utcnow()
 
         if user.otp_last_resent_at:

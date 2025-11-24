@@ -114,7 +114,6 @@ async def logout(
     This endpoint validates the token and confirms logout.
     """
     try:
-        # Validate the token
         token = credentials.credentials
         payload = decode_access_token(token)
         blacklisted_tokens.add(token)
@@ -181,47 +180,6 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-# async def change_password(
-#     request: ChangePasswordRequest,
-# ):
-
-#     async def get_current_user(authorization: Optional[str] = Header(None)):
-#         if not authorization or not authorization.startswith("Bearer "):
-#             raise HTTPException(
-#                 status_code=status.HTTP_401_UNAUTHORIZED,
-#                 detail="Not authenticated",
-#                 headers={"WWW-Authenticate": "Bearer"},
-#             )
-
-#         token = authorization.replace("Bearer ", "")
-#         try:
-#             payload = decode_access_token(token)
-#             user_id = payload.get("sub")
-#             if not user_id:
-#                 raise HTTPException(
-#                     status_code=status.HTTP_401_UNAUTHORIZED,
-#                     detail="Invalid authentication credentials"
-#                 )
-#             return user_id
-#         except ValueError as e:
-#             raise HTTPException(
-#                 status_code=status.HTTP_401_UNAUTHORIZED,
-#                 detail=str(e)
-#             )
-
-#     user_id = await get_current_user(authorization)
-#     auth_service = AuthService(db)
-
-#     await auth_service.change_password(
-#         user_id=user_id,
-#         current_password=request.current_password,
-#         new_password=request.new_password
-#     )
-
-#     return api_response(
-#         message="Password changed successfully",
-#         status_code=200,
-#     )
 
 @router.post("/reset-password", response_model=AuthResponse)
 async def reset_password(
@@ -301,7 +259,6 @@ async def forgot_password(
         
         auth_service = AuthService(db)
 
-        # Get user by email and generate reset token with 1-minute expiration
         user = await auth_service.get_user_by_email(request.email)
         if not user:
             raise HTTPException(
@@ -311,12 +268,11 @@ async def forgot_password(
 
         verification_otp = generate_otp()
 
-        # Store the token in the database
         user.verification_otp=verification_otp
         user.otp_expires_at=datetime.utcnow() + timedelta(minutes=2)
         await db.commit()
         logger.info(f"Password reset requested for: {user.email}")
-        # Send reset email in background
+
         background_tasks.add_task(
             send_password_reset,      
             to_email=user.email,
