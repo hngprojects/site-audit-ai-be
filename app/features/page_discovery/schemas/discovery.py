@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, HttpUrl
 
 class DiscoveryRequest(BaseModel):
@@ -6,6 +6,6 @@ class DiscoveryRequest(BaseModel):
     top_n: int = 20
 
 class DiscoveryResponse(BaseModel):
-    subdomains: List[str]
+    subdomains: Optional[List[str]] = None  # subdomain scanning is disabled for MVP
     pages: List[str]
     important_pages: List[str]
