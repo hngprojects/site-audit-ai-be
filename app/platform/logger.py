@@ -10,20 +10,21 @@ if not os.path.exists(log_dir):
 # 2. Define the path to the log file
 log_file_path = os.path.join(log_dir, "site_audit.log")
 
+
 def get_logger(name: str):
     """
     Creates a logger instance that writes to console AND a file.
     """
     # Create a custom logger
     logger = logging.getLogger(name)
-    
+
     if logger.handlers:
         return logger
-    
+
     logger.setLevel(logging.INFO)
 
     # 3. Create Formatters (How the log looks)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # 4. Handler 1: Write to File (Rotating)
     file_handler = RotatingFileHandler(log_file_path, maxBytes=10_000_000, backupCount=5)

@@ -1,8 +1,7 @@
-import smtplib
 import logging
-from email.mime.text import MIMEText
-from app.platform import config
+
 from app.platform.services.email import send_email
+
 
 def send_thank_you_email(to_email: str, name: str):
     try:

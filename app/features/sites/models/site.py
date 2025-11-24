@@ -1,12 +1,16 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Enum, DateTime, UniqueConstraint
-from sqlalchemy.orm import relationship
-from app.platform.db.base import BaseModel
 import enum
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import relationship
+
+from app.platform.db.base import BaseModel
+
 
 class SiteStatus(enum.Enum):
     active = "active"
     archived = "archived"
     deleted = "deleted"
+
 
 class Site(BaseModel):
     __tablename__ = "sites"
@@ -21,6 +25,4 @@ class Site(BaseModel):
 
     user = relationship("User", back_populates="sites")
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "root_url", name="uq_user_site_root_url"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "root_url", name="uq_user_site_root_url"),)
