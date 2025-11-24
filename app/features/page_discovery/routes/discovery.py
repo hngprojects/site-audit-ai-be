@@ -6,7 +6,7 @@ from app.platform.response import api_response
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
-@router.post("/")
+@router.post("")
 async def enumerate_website(data: DiscoveryRequest):
     try:
         domain = data.url.host

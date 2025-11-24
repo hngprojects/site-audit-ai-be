@@ -24,7 +24,6 @@ class DiscoveryService:
                 subdomains.append(data["host"])
             except Exception:
                 continue
-        print("Subdomains found:", subdomains)
         return subdomains
 
     @staticmethod
@@ -51,7 +50,6 @@ class DiscoveryService:
                 if href and href.startswith(url) and href not in visited:
                     to_visit.append(href)
         driver.quit()
-        print("Pages found:", pages)
         return pages
 
     @staticmethod
@@ -67,7 +65,8 @@ class DiscoveryService:
             api_key=settings.OPENROUTER_API_KEY
         )
         prompt = (
-            f"Given this list of URLs, select the top {top_n} most important pages for a website audit:\n"
+            f"Given this list of URLs, select the top {top_n} most important pages for a website audit. "
+            "Return ONLY the URLs, one per line, no explanations or numbering:\n"
             + "\n".join(pages)
         )
         completion = client.chat.completions.create(
@@ -85,5 +84,5 @@ class DiscoveryService:
             ]
         )
         text = completion.choices[0].message.content
-        important_pages = [line.strip() for line in text.splitlines() if line.strip().startswith("http")]
+        important_pages = [line.strip() for line in text.splitlines() if "http" in line]
         return important_pages
