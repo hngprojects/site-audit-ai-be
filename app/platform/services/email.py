@@ -1,9 +1,11 @@
+import os
 import smtplib
 import ssl
-import os
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 from jinja2 import Environment, FileSystemLoader
+
 from app.platform.config import settings
 from app.platform.logger import get_logger
 
@@ -26,11 +28,11 @@ def send_email(to_email: str, subject: str, body: str):
     msg["From"] = settings.MAIL_FROM_ADDRESS
     msg["To"] = to_email
 
-    msg.attach(MIMEText(body, 'html'))
+    msg.attach(MIMEText(body, "html"))
 
     try:
         port = settings.MAIL_PORT
-        
+
         logger.info(f" Connecting to {settings.MAIL_HOST}:{port}...")
         if port == 465:
             context = ssl.create_default_context()
@@ -39,12 +41,12 @@ def send_email(to_email: str, subject: str, body: str):
                 server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
         else:
             with smtplib.SMTP(settings.MAIL_HOST, port) as server:
-                server.ehlo() 
-                
+                server.ehlo()
+
                 if str(settings.MAIL_ENCRYPTION).upper() in ["TLS", "TRUE"]:
                     server.starttls()
-                    server.ehlo() 
-                
+                    server.ehlo()
+
                 server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
                 server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
 
