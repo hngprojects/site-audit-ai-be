@@ -29,6 +29,74 @@ def is_valid_domain(url: str) -> bool:
     return "." in hostname and not hostname.startswith(".") and not hostname.endswith(".")
 
 
+# ─────────────────────────────────────────────────────────────
+# 1. Public / Global Site Functions (NO user_id required)
+# ─────────────────────────────────────────────────────────────
+
+async def create_site(db: AsyncSession, site_data: SiteCreate):
+    """Create a global site (not tied to any user)"""
+    normalized_url = normalize_url(site_data.root_url)
+    if not is_valid_domain(normalized_url):
+        raise ValueError("Invalid domain in root_url")
+
+    new_site = Site(
+        root_url=normalized_url,
+        display_name=site_data.display_name,
+        favicon_url=site_data.favicon_url,
+        status=site_data.status,
+    )
+    db.add(new_site)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ValueError("A site with this root_url already exists")
+    except Exception as e:
+        await db.rollback()
+        raise e
+    await db.refresh(new_site)
+    return new_site
+
+
+async def get_site_by_id(db: AsyncSession, site_id: str):
+    """Get any site by ID (public access)"""
+    result = await db.execute(
+        select(Site).where(Site.id == site_id, Site.status != SiteStatus.deleted)
+    )
+    site = result.scalars().first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    return site
+
+
+async def get_all_sites(db: AsyncSession):
+    """List all non-deleted sites (global + user-owned)"""
+    result = await db.execute(
+        select(Site).where(Site.status != SiteStatus.deleted)
+    )
+    return result.scalars().all()
+
+
+async def soft_delete_site_by_id(db: AsyncSession, site_id: str):
+    """Soft delete any site by ID (no ownership check)"""
+    stmt = (
+        update(Site)
+        .where(Site.id == site_id)
+        .values(status=SiteStatus.deleted)
+        .returning(Site)
+    )
+    result = await db.execute(stmt)
+    site = result.scalars().first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    await db.commit()
+    return site
+
+
+# ─────────────────────────────────────────────────────────────
+# 2. Original Auth-based Functions (kept for future use)
+# ─────────────────────────────────────────────────────────────
+
 async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCreate):
     normalized_url = normalize_url(site_data.root_url)
     if not is_valid_domain(normalized_url):
