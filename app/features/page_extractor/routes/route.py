@@ -1,5 +1,5 @@
 from fastapi import APIRouter,  status
-from app.features.page_extractor.schemas.extractor_schema import ExtractorRequest, ExtractorResponse
+from app.features.page_extractor.schemas.extractor_schema import ExtractorRequest
 from app.features.page_extractor.services.extractor_service import ExtractorService
 from app.platform.response import api_response
 
@@ -16,7 +16,7 @@ async def analyze_page(request:ExtractorRequest):
         # Extractor Engines
         headings = ExtractorService.extract_headings(driver)
         images = ExtractorService.extract_images(driver)
-        issues = ExtractorService.extract_accessibility(driver)
+        issues = ExtractorService.extract_accessibility(driver, headings=headings, images=images)
 
         response_data = {
             "heading_data" : headings,
