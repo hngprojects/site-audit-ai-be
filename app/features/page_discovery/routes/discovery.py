@@ -9,16 +9,12 @@ router = APIRouter(prefix="/discovery", tags=["discovery"])
 @router.post("")
 async def enumerate_website(data: DiscoveryRequest):
     try:
-        domain = data.url.host
-        subdomains = DiscoveryService.enumerate_subdomains(domain)
         pages = DiscoveryService.discover_pages(str(data.url))
-        all_urls = pages + [f"https://{sub}" for sub in subdomains if not sub.startswith("www.")]
         important_pages = DiscoveryService.filter_important_pages(
-            all_urls,
+            pages,
             data.top_n
         )
         response_data = DiscoveryResponse(
-            subdomains=subdomains,
             pages=pages,
             important_pages=important_pages
         )

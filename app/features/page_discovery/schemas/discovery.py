@@ -6,6 +6,5 @@ class DiscoveryRequest(BaseModel):
     top_n: int = 20
 
 class DiscoveryResponse(BaseModel):
-    subdomains: List[str]
     pages: List[str]
     important_pages: List[str]

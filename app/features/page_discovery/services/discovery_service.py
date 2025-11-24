@@ -1,33 +1,22 @@
-import subprocess
-import json
-import requests
 from typing import List
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from zai import ZaiClient
 from openai import OpenAI
 from app.platform.config import settings
+import os
 
+PROMPT_PATH = os.path.join(
+    os.path.dirname(__file__), "../utils/PROMPT.md"
+)
+
+def load_prompt_template():
+    with open(PROMPT_PATH, "r") as f:
+        return f.read()
 
 class DiscoveryService:
     @staticmethod
-    def enumerate_subdomains(domain: str) -> List[str]:
-        result = subprocess.run(
-            ["subfinder", "-d", domain, "-silent", "-json"],
-            capture_output=True, text=True
-        )
-        subdomains = []
-        for line in result.stdout.splitlines():
-            try:
-                data = json.loads(line)
-                subdomains.append(data["host"])
-            except Exception:
-                continue
-        return subdomains
-
-    @staticmethod
-    def discover_pages(url: str, max_depth: int = 2) -> List[str]:
+    def discover_pages(url: str) -> List[str]:
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--disable-gpu")
@@ -64,10 +53,10 @@ class DiscoveryService:
             base_url="https://openrouter.ai/api/v1",
             api_key=settings.OPENROUTER_API_KEY
         )
-        prompt = (
-            f"Given this list of URLs, select the top {top_n} most important pages for a website audit. "
-            "Return ONLY the URLs, one per line, no explanations or numbering:\n"
-            + "\n".join(pages)
+        prompt_template = load_prompt_template()
+        prompt = prompt_template.format(
+            top_n=top_n,
+            urls="\n".join(pages)
         )
         completion = client.chat.completions.create(
             extra_headers={
