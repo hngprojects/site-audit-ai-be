@@ -1,7 +1,3 @@
-upstream fastapi_app {
-    server 127.0.0.1:${APP_PORT};
-}
-
 server {
     listen 80;
     server_name ${SERVER_NAME};
@@ -14,7 +10,7 @@ server {
     }
 
     location / {
-        proxy_pass         http://fastapi_app;
+        proxy_pass         http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header   Upgrade $http_upgrade;
         proxy_set_header   Connection keep-alive;
