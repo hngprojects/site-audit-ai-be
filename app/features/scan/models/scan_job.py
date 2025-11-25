@@ -1,8 +1,22 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, CheckConstraint
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Index, CheckConstraint, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import enum
 
 from app.platform.db.base import BaseModel
+
+
+class ScanJobStatus(enum.Enum):
+    """Scan job status state machine"""
+    queued = "queued"
+    discovering = "discovering"
+    selecting = "selecting"
+    scraping = "scraping"
+    analyzing = "analyzing"
+    aggregating = "aggregating"
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
 
 
 class ScanJob(BaseModel):
@@ -22,8 +36,7 @@ class ScanJob(BaseModel):
     site = relationship("Site", foreign_keys=[site_id])
     
     # Job status (state machine)
-    status = Column(String(50), default="queued", nullable=False, index=True)
-    # Values: 'queued', 'discovering', 'selecting', 'scraping', 'analyzing', 'aggregating', 'completed', 'failed', 'cancelled' Enum?
+    status = Column(Enum(ScanJobStatus), default=ScanJobStatus.queued, nullable=False, index=True)
     
     # Error tracking
     error_message = Column(Text, nullable=True)

@@ -37,8 +37,14 @@ class ScanStatusResponse(BaseModel):
     """Response for scan status check."""
     job_id: str
     status: str
-    current_phase: str
-    progress: Dict[str, str]
+    progress_percent: int
+    current_step: str
+    pages_discovered: Optional[int] = None
+    pages_selected: Optional[int] = None
+    pages_scanned: Optional[int] = None
+    error_message: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
 
 
 class ScanResultsResponse(BaseModel):

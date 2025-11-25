@@ -18,7 +18,7 @@ class ScanIssue(BaseModel):
     
     # Issue classification
     category = Column(String(50), nullable=False, index=True)  # 'seo', 'accessibility', 'design', 'performance' Maybe we use an ENUM herre?
-    severity = Column(String(50), nullable=False, index=True)  # 'critical', 'high', 'medium', 'low', 'info' Enum here too? @apathy @phurhard @Muizzyranking @Newkoncept @others; lets discuss
+    severity = Column(String(50), nullable=False, index=True)  # 'critical', 'high', 'medium', 'low', 'info' Enum here too?
     
     # Issue details
     title = Column(String(512), nullable=False)

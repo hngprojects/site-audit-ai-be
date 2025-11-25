@@ -1,7 +1,15 @@
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Index, UniqueConstraint, Enum
 from datetime import datetime, date
+import enum
 
 from app.platform.db.base import BaseModel
+
+
+class Platform(enum.Enum):
+    """Device platform types"""
+    ios = "ios"
+    android = "android"
+    web = "web"
 
 
 class DeviceSession(BaseModel):
@@ -23,7 +31,7 @@ class DeviceSession(BaseModel):
     
     # Device metadata (for analytics)
     user_agent = Column(String(512), nullable=True)
-    platform = Column(String(50), nullable=True)  # 'ios', 'android', 'web'
+    platform = Column(Enum(Platform), nullable=True)
     
     # Statistics
     total_scans = Column(Integer, default=0, nullable=False)

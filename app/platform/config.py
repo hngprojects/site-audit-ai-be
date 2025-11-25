@@ -13,6 +13,17 @@ class Settings(BaseSettings):
     # ── Database ────────────────────────────────
     DATABASE_URL: str
 
+    CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
+
+    # Using RabbitMQ for results too (Might use Redis later)
+    CELERY_RESULT_BACKEND: str = "rpc://"  
+    
+    CELERY_TASK_SERIALIZER: str = "json"
+    CELERY_RESULT_SERIALIZER: str = "json"
+    CELERY_ACCEPT_CONTENT: str = "json"
+    CELERY_TASK_TRACK_STARTED: bool = True
+    CELERY_TASK_TIME_LIMIT: int = 3600  # 1 hour max per task
+
     # ── Email Configuration ─────────────────────
     MAIL_MAILER: str = "smtp"
     MAIL_HOST: str = "smtp.gmail.com"
@@ -28,6 +39,7 @@ class Settings(BaseSettings):
     GLM_API_URL: Optional[str] = None
     GLM_API_KEY: Optional[str] = None
 
+    GOOGLE_GEMINI_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
 
     # ── JWT / Auth ──────────────────────────────

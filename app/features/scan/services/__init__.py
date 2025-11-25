@@ -23,8 +23,6 @@ Organized by responsibility for optimal efficiency:
 4. analysis/ - LLM integration
    - page_selector.py: LLM Call #1 - Select important pages
    - page_analyzer.py: LLM Call #2 - Score and find issues with methods like: analyze_accesibility(), analyze_seo(), analyze_performance() etc.
-   - prompt_builder.py: Structured prompts for token efficiency
-
    
    # Leave these for now, we'd hop on a huddle call later to discuss.
 
