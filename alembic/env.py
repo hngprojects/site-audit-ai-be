@@ -17,7 +17,10 @@ from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
 from app.features.support.models import SupportTicket
-from app.features.sites.models.site import Site 
+from app.features.sites.models.site import Site
+from app.features.scan.models.scan_job import ScanJob
+from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.models.device_session import DeviceSession 
 
 load_dotenv()
 
