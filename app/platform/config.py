@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     MAIL_ENCRYPTION: str = "tls"
     MAIL_FROM_ADDRESS: str = "example@localhost"
     MAIL_FROM_NAME: str = "SiteMate AI"
+    MAIL_ADMIN_EMAIL:str = "example@localhost"
     GOOGLE_CLIENT_ID: str = "dummy-value"
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 

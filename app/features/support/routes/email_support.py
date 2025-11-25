@@ -10,11 +10,16 @@ from app.features.support.services.email_service import TicketService
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 
+from app.platform.services.email import send_email
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+
+
 router = APIRouter(prefix="/support/email", tags=["Email Support"])
 
 
 @router.post("/",  status_code=status.HTTP_201_CREATED)
 async def create_support_ticket(
+        background_tasks: BackgroundTasks,
         request: EmailSupportRequest, 
         db: AsyncSession = Depends(get_db)
     ):
@@ -28,17 +33,15 @@ async def create_support_ticket(
     ticket_service = TicketService(db)
     ticket = await ticket_service.create_ticket(
         email=request.email,
+        full_name=request.full_name,
+        phone_number=request.phone_number,
         subject=request.subject,
         message=request.message,
     )
 
-    # # Send email notification (async in background)
-    # try:
-    #     email_service = EmailService()
-    #     await email_service.send_ticket_notification(ticket)
-    # except Exception as e:
-    #     print(f"Email notification failed: {e}")
+    background_tasks.add_task(TicketService.send_ticket_notification, ticket)
 
+   
     return api_response(
         message="Support ticket created successfully", 
         data=TicketResponse.model_validate(ticket),

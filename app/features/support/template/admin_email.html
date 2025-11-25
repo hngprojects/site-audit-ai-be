@@ -1,0 +1,17 @@
+{% extends "base_email.html" %} {% block title %}Verify Action{% endblock %} {%
+block content %}
+<div class="text-center">
+  <h2>New Support Ticket Received</h2>
+</div>
+
+<h3>New Support Ticket</h3>
+<p><strong>Ticket ID:</strong> {{ ticket.ticket_id}}</p>
+<p><strong>From:</strong> {{ ticket.full_name or 'N/A'}} ({{ ticket.email}})</p>
+<p><strong>Phone:</strong> {{ ticket.phone_number or 'N/A'}}</p>
+<p><strong>Subject:</strong> {{ ticket.subject}}</p>
+<p><strong>Priority:</strong> {{ ticket.priority.value}}</p>
+<p><strong>Category:</strong> {{ ticket.category.value}}</p>
+<p><strong>Message:</strong><br />{{ ticket.message}}</p>
+
+<p>Thank you,<br />The Sitelytics Team</p>
+{% endblock %}
