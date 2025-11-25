@@ -1,3 +1,3 @@
-from app.features.support.models.support_ticket import SupportTicket
+from .support_ticket import SupportTicket, TicketStatus, TicketPriority, TicketCategory
 
-__all__ = ['SupportTicket']
+__all__ = ["SupportTicket", "TicketStatus", "TicketPriority", "TicketCategory"]
