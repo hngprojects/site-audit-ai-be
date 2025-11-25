@@ -6,3 +6,11 @@ __pycache__
 .vscode
 .pytest_cache
 .ruff_cache
+local/
+static/uploads/profile-pictures/*
+static/uploads/profile-pictures/.gitkeep
+*.db
+local/
+logs/
+alembic/versions
+site_audit_ai_be.egg-info/

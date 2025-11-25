@@ -1,0 +1,82 @@
+[project]
+name = "site-audit-ai-be"
+version = "0.1.0"
+description = "Sitelytics Backend Service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "aiosqlite>=0.21.0",
+  "annotated-doc==0.0.4",
+  "annotated-types==0.7.0",
+  "anyio==4.11.0",
+  "click==8.3.1",
+  "fastapi==0.121.2",
+  "greenlet==3.2.4",
+  "h11==0.16.0",
+  "idna==3.11",
+  "pydantic[email]==2.12.4",
+  "pydantic-core==2.41.5",
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.1",
+  "python-dotenv==1.2.1",
+  "sniffio==1.3.1",
+  "sqlalchemy==2.0.44",
+  "starlette==0.49.3",
+  "typing-extensions==4.15.0",
+  "typing-inspection==0.4.2",
+  "uuid-extension>=0.2.0",
+  "uvicorn==0.38.0",
+  "PyJWT==2.10.1",
+  "uuid-extension==0.2.0",
+  "email-validator==2.2.0",
+  "bcrypt>=5.0.0",
+  "google-auth>=2.43.0",
+  "requests>=2.32.5",
+  "alembic>=1.17.2",
+  "httpx>=0.28.1",
+  "pydantic-settings>=2.12.0",
+  "asyncpg>=0.30.0",
+  "psycopg[binary]>=3.2.12",
+  "python-multipart>=0.0.5",
+  "psycopg2-binary>=2.9.11",
+  "alembic-postgresql-enum>=1.8.0",
+  "jinja2>=3.1.6",
+  "selenium>=4.38.0",
+  "zai-sdk>=0.0.4.2",
+  "openai>=2.8.1",
+  "pre-commit>=4.5.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# ------------------------
+# RUFF CONFIG
+# ------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "alembic>=1.17.2",
+    "httpx>=0.28.1",
+    "pytest>=9.0.1",
+    "pytest-asyncio>=1.3.0",
+]
