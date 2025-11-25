@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from uuid_extension import uuid7
 
@@ -27,11 +27,11 @@ class TicketPriority(str, Enum):
     URGENT = "urgent"
 
 
-# class TicketType(str, Enum):
-#     """Type of support request"""
-#     EMAIL = "email"
-#     MESSAGE = "message"
-#     CALLBACK = "callback"
+class TicketType(str, Enum):
+    """Type of support request"""
+    EMAIL = "email"
+    MESSAGE = "message"
+    CALLBACK = "callback"
 
 
 class SupportTicket(BaseModel):
@@ -45,13 +45,14 @@ class SupportTicket(BaseModel):
     # Ticket details
     subject = Column(String(500), nullable=False)
     message = Column(Text, nullable=False)
-    # ticket_type = Column(SQLEnum(TicketType), nullable=False, default=TicketType.EMAIL)
+    ticket_type = Column(SQLEnum(TicketType), nullable=False, default=TicketType.EMAIL)
     priority = Column(SQLEnum(TicketPriority), nullable=False, default=TicketPriority.MEDIUM)
     status = Column(SQLEnum(TicketStatus), nullable=False, default=TicketStatus.PENDING, index=True)
 
     # Assignment and tracking
     assigned_to = Column(Integer, nullable=True)  # Support agent ID
     category = Column(String(100), nullable=True)  # e.g., "technical", "billing", "general"
+    resolved_at = Column(DateTime(timezone=True), nullable=True)  # When ticket was resolved
 
     # Metadata
     source = Column(String(50), nullable=True)  # "mobile_app", "web", "api"
