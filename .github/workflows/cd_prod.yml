@@ -51,7 +51,7 @@ jobs:
           export SERVICE_GROUP="$SERVICE_GROUP_VALUE"
           export PYTHON_BIN="${APP_ROOT}/.venv/bin/python"
           envsubst '$SERVER_NAME $APP_PORT $APP_ROOT $NGINX_LOG_PREFIX' < deploy/nginx/site-audit-ai.conf.tpl > deploy/nginx/site-audit-ai.conf
-          envsubst '$SERVICE_USER $SERVICE_GROUP $PYTHON_BIN $APP_ROOT $APP_PORT $DEPLOY_ENV $SERVICE_NAME' < deploy/systemd/site-audit-ai.service.tpl > deploy/systemd/site-audit-ai.servic
+          envsubst '$SERVICE_USER $SERVICE_GROUP $PYTHON_BIN $APP_ROOT $APP_PORT $DEPLOY_ENV $SERVICE_NAME' < deploy/systemd/site-audit-ai.service.tpl > deploy/systemd/site-audit-ai.service
 
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.0
