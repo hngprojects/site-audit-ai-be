@@ -44,8 +44,7 @@ async def audit_page(
         return api_response(
             data=audit_result.model_dump(),
             message="Website Audited",
-            status_code=200,
-            success=True
+            status_code=200
         )
 
     except Exception as e:
