@@ -15,6 +15,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
+from app.features.audit.routes.audit import router as audit_router
 
 app = FastAPI(
     title="Site Audit AI API", description="API for website auditing and analysis", version="1.0.0"
@@ -52,4 +53,5 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(waitlist_router)
 app.include_router(health_router)
+app.include_router(audit_router)
 app.include_router(api_router, prefix="/api/v1")
