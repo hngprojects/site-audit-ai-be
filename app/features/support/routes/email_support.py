@@ -37,6 +37,7 @@ async def create_support_ticket(
         phone_number=request.phone_number,
         subject=request.subject,
         message=request.message,
+        source=request.source,
     )
 
     background_tasks.add_task(TicketService.send_ticket_notification, ticket)

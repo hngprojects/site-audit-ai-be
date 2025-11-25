@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from app.platform.services.email import send_email
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, ChoiceLoader
 from app.platform.config import settings
 from pathlib import Path
 
@@ -60,6 +60,7 @@ class TicketService:
         message: str,
         full_name: str | None = None,
         phone_number: str | None = None,
+        source: str | None = "mobile",
     ) -> SupportTicket:
         """Create a new support ticket"""
 
@@ -73,6 +74,7 @@ class TicketService:
                 priority=self._auto_detect_priority(subject, message),
                 status=TicketStatus.PENDING,
                 category=self._auto_categorize(subject, message),
+                source=source
             )
             self.db.add(ticket)
             
@@ -122,8 +124,17 @@ class TicketService:
 
     @staticmethod
     async def send_ticket_notification(ticket) -> None:
-        template_dir = Path(__file__).resolve().parent.parent / "template"
-        template = Environment(loader=FileSystemLoader(str(template_dir))).get_template("admin_email.html")
+        support_templates = Path(__file__).resolve().parent.parent / "template"
+        base_template = Path(__file__).resolve().parent.parent.parent / "auth" / "template"
+
+
+        env = Environment(
+        loader=ChoiceLoader([
+            FileSystemLoader(str(support_templates)),
+            FileSystemLoader(str(base_template)),
+        ])
+    )
+        template = env.get_template("admin_email.html")
         html_content = template.render(ticket=ticket)  
 
 

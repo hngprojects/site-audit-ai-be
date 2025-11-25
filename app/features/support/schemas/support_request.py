@@ -16,6 +16,8 @@ class EmailSupportRequest(BaseModel):
     phone_number: str | None = Field(None, min_length=7, max_length=32)
     subject: str = Field(..., min_length=3, max_length=500, description="Support request subject")
     message: str = Field(..., min_length=10, max_length=5000, description="Support request message")
+    source: str | None = Field("mobile", description="Origin of the request (mobile/web/api)")
+
 
 
 class TicketResponse(BaseModel):
@@ -30,6 +32,7 @@ class TicketResponse(BaseModel):
     status: TicketStatus
     priority: TicketPriority
     category: TicketCategory
+    source: str | None
     created_at: datetime
     updated_at: datetime
 
