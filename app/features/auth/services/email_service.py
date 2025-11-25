@@ -22,12 +22,10 @@ def send_password_reset(to_email: str, first_name: str, otp: str):
     send_email(to_email, "Reset Your Password - Sitelytics", html_content)
 
 
-def send_welcome_email(to_email: str, first_name: str):
+def send_welcome_email(to_email: str, name: str):
     """Used for: Waitlist Confirmation"""
     template = env.get_template("welcome_email.html")
-    html_content = template.render(
-        first_name=first_name, dashboard_url="https://sitelytics.com/dashboard"
-    )
+    html_content = template.render(name=name, dashboard_url="https://sitelytics.com/dashboard")
     send_email(to_email, "You're on the list! - Sitelytics", html_content)
 
 
