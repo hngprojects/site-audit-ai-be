@@ -117,15 +117,16 @@ class EmailService:
             New Support Ticket Received
             
             Ticket ID: {ticket.ticket_id}
-            From: {ticket.name} ({ticket.email})
+            From: {ticket.email}
             Subject: {ticket.subject}
             Priority: {ticket.priority.value}
+            Category: {ticket.category}
             
             Message:
             {ticket.message}
             
             ---
-            Tokugawa Support System
+            Site Audit AI Support System
             """
 
             msg.attach(MIMEText(body, "plain"))

@@ -42,7 +42,9 @@ class TicketResponse(BaseModel):
     message: str
     status: str
     priority: str
-    ticket_type: str = "EMAIL"  # Default value
+    ticket_type: str
+    category: Optional[str] = None
+    resolved_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
