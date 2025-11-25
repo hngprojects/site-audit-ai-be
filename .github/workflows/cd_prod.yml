@@ -51,7 +51,7 @@ jobs:
           export SERVICE_GROUP="$SERVICE_GROUP_VALUE"
           export PYTHON_BIN="${APP_ROOT}/.venv/bin/python"
           envsubst '$SERVER_NAME $APP_PORT $APP_ROOT $NGINX_LOG_PREFIX' < deploy/nginx/site-audit-ai.conf.tpl > deploy/nginx/site-audit-ai.conf
-          envsubst '$SERVICE_USER $SERVICE_GROUP $PYTHON_BIN $APP_ROOT $APP_PORT $DEPLOY_ENV $SERVICE_NAME' < deploy/systemd/site-audit-ai.service.tpl > deploy/systemd/site-audit-ai.servic
+          envsubst '$SERVICE_USER $SERVICE_GROUP $PYTHON_BIN $APP_ROOT $APP_PORT $DEPLOY_ENV $SERVICE_NAME' < deploy/systemd/site-audit-ai.service.tpl > deploy/systemd/site-audit-ai.service
 
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -72,6 +72,7 @@ jobs:
             --exclude ".git" \
             --exclude "__pycache__" \
             --exclude ".venv" \
+            --exclude "alembic/versions" \
             -e "ssh -p ${SSH_PORT:-22}" \
             ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH"
 
@@ -115,9 +116,17 @@ jobs:
               NGINX_SITE="/etc/nginx/sites-available/${SERVICE}.conf"
               sudo mv /tmp/site-audit-ai.conf "$NGINX_SITE"
               sudo ln -sf "$NGINX_SITE" "/etc/nginx/sites-enabled/${SERVICE}.conf"
+              export SERVER_NAME
+              sudo certbot --nginx \
+                -d ${SERVER_NAME} \
+                --non-interactive \
+                --agree-tos \
+                --email ${EMAIL} \
+                --redirect 
+
               sudo nginx -t
               sudo systemctl reload nginx
-
+              
               sudo mv /tmp/site-audit-ai.service "/etc/systemd/system/${SERVICE}.service"
               sudo chown root:root "/etc/systemd/system/${SERVICE}.service"
               sudo systemctl daemon-reload
