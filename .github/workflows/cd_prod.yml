@@ -24,6 +24,7 @@ jobs:
       APP_URL: ${{ secrets.PROD_APP_URL }}
       ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
       NGINX_LOG_PREFIX: siteaudit-be-prod
+      EMAIL: ${{ secrets.PROD_SSL_EMAIL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -110,6 +111,7 @@ jobs:
               python3.12 -m venv venv
               source venv/bin/activate
               uv sync
+              mkdir -p alembic/versions
               uv run alembic revision --autogenerate -m "production deployment migration"
               uv run alembic upgrade head 
 

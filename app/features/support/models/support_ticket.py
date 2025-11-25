@@ -44,7 +44,9 @@ class SupportTicket(BaseModel):
             index=True,
             default=make_ticket_id
         )
-
+    
+    full_name = Column(String(255), nullable=True)
+    phone_number = Column(String(32), nullable=True)
     email = Column(String(255), nullable=False, index=True)
     subject = Column(String(500), nullable=False)
     message = Column(Text, nullable=False)
@@ -65,6 +67,7 @@ class SupportTicket(BaseModel):
         nullable=False,
         default=TicketCategory.GENERAL,
     )
+    source = Column(String(50), nullable=True, default="mobile")  # "mobile_app", "web", "api"
     notes = Column(Text, nullable=True)
     
 

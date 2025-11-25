@@ -1,8 +1,14 @@
-import re
+import re, os
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from app.platform.services.email import send_email
+from jinja2 import Environment, FileSystemLoader, ChoiceLoader
+from app.platform.config import settings
+from pathlib import Path
+
+
 from app.features.support.models.support_ticket import (
     SupportTicket, 
     TicketPriority, 
@@ -52,17 +58,23 @@ class TicketService:
         email: str,
         subject: str,
         message: str,
+        full_name: str | None = None,
+        phone_number: str | None = None,
+        source: str | None = "mobile",
     ) -> SupportTicket:
         """Create a new support ticket"""
 
         for _ in range(2):  # one retry if unique ticket_id collides
             ticket = SupportTicket(
-                email=email,
+                 email=email,
+                full_name=full_name,
+                phone_number=phone_number,
                 subject=subject,
                 message=message,
                 priority=self._auto_detect_priority(subject, message),
                 status=TicketStatus.PENDING,
                 category=self._auto_categorize(subject, message),
+                source=source
             )
             self.db.add(ticket)
             
@@ -108,4 +120,25 @@ class TicketService:
 
         await self.db.commit()
         return ticket
+    
+
+    @staticmethod
+    async def send_ticket_notification(ticket) -> None:
+        support_templates = Path(__file__).resolve().parent.parent / "template"
+        base_template = Path(__file__).resolve().parent.parent.parent / "auth" / "template"
+
+
+        env = Environment(
+        loader=ChoiceLoader([
+            FileSystemLoader(str(support_templates)),
+            FileSystemLoader(str(base_template)),
+        ])
+    )
+        template = env.get_template("admin_email.html")
+        html_content = template.render(ticket=ticket)  
+
+
+        to_email = settings.MAIL_ADMIN_EMAIL
+        print(settings.MAIL_ADMIN_EMAIL)
+        send_email(to_email, f"New Ticket for {ticket.ticket_id}", html_content)
 
