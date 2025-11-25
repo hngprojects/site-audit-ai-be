@@ -1,9 +1,12 @@
-from pydantic import BaseModel, EmailStr
 from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
+
 
 class WaitlistIn(BaseModel):
     name: str
     email: EmailStr
+
 
 class WaitlistOut(BaseModel):
     id: UUID
