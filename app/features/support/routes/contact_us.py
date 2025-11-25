@@ -5,7 +5,7 @@ from app.features.support.schemas.contact_us import ContactUsIn, ContactUsRespon
 from app.features.support.services.email_service import TicketService
 from app.platform.db.session import get_db
 
-router = APIRouter(prefix="/contact", tags=["contact"])
+router = APIRouter(prefix="support/contact", tags=["contact"])
 
 
 @router.post("/", response_model=ContactUsResponse, status_code=status.HTTP_201_CREATED)
