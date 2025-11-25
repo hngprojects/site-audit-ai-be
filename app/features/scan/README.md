@@ -2,6 +2,149 @@
 
 This document explains how to run the async scanning system with Celery workers and RabbitMQ.
 
+## 📖 General Flow
+
+The scan feature performs comprehensive website audits through a multi-phase pipeline:
+
+### High-Level Flow
+
+```
+User Request → Create Job → Queue Task → Background Processing → Store Results
+```
+
+### Detailed Step-by-Step
+
+1. **User Initiates Scan** (`POST /scan/start-async`)
+   - User submits URL
+   - FastAPI validates input and creates `ScanJob` record in database
+   - Job gets unique UUID and initial status: `queued`
+   - Returns job ID immediately to user
+
+2. **Task Orchestration** (`run_scan_pipeline`)
+   - Job queued to RabbitMQ `scan.orchestration` queue
+   - Celery worker picks up orchestration task
+   - Sets up pipeline chain: discovery → selection → (scraping, extraction, analysis) → aggregation
+   - Updates job status throughout execution
+
+3. **Phase 1: Page Discovery** (`discover_pages`)
+   - Status: `discovering` (15% progress)
+   - Selenium Chrome headless browser visits the target URL
+   - Crawls website to find all internal pages (max depth: 3 levels)
+   - Handles dynamic content, stale elements, and JavaScript-heavy sites
+   - Stores discovered URLs in `scan_pages` table
+   - Updates `pages_discovered` count
+
+4. **Phase 2: Page Selection** (`select_pages`)
+   - Status: `selecting` (35% progress)
+   - Sends discovered page list to Google Gemini 1.5 Flash LLM
+   - AI analyzes URLs and selects most important pages for audit
+   - Selection criteria: homepage, key pages, diverse content types
+   - Limits selection to top N pages (default: 15) for efficiency
+   - Updates `pages_selected` count and marks selected pages in database
+
+5. **Phase 3: Page Scraping** (`scrape_page`) - *In Progress*
+   - Status: `scraping` (50% progress)
+   - Visits each selected page and extracts full HTML content
+   - Handles authentication, cookies, and dynamic rendering
+   - Stores raw HTML for analysis
+   - **TODO**: Team integration pending
+
+6. **Phase 4: Data Extraction** (`extract_data`) - *In Progress*
+   - Status: `extracting` (60% progress)
+   - Parses HTML to extract structured data
+   - Identifies page elements: headings, images, forms, links, meta tags
+   - Extracts accessibility attributes, semantic structure
+   - **TODO**: Team integration pending
+
+7. **Phase 5: Content Analysis** (`analyze_page`) - *In Progress*
+   - Status: `analyzing` (70% progress)
+   - Runs scan-type-specific checks (accessibility/SEO/performance)
+   - Detects issues: missing alt text, broken links, slow resources
+   - Generates recommendations and severity scores
+   - **TODO**: Team integration pending
+
+8. **Phase 6: Result Aggregation** (`aggregate_results`)
+   - Status: `aggregating` (90% progress)
+   - Collects all page-level scores and issues
+   - Calculates overall site score (0-100)
+   - Generates category breakdowns (accessibility, SEO, performance)
+   - Updates `score_overall`, `score_breakdown` in `ScanJob`
+   - Sets final status: `completed` (100% progress)
+
+9. **User Retrieves Results** (`GET /scan/{job_id}/results`)
+   - User polls status endpoint until `completed`
+   - Fetches comprehensive scan report with:
+     - Overall site score
+     - Pages scanned with individual scores
+     - Issues found with severity levels
+     - Recommendations for improvement
+     - Detailed metrics and charts
+
+### Progress Tracking
+
+The status endpoint (`GET /scan/{job_id}/status`) provides real-time updates:
+
+| Status | Progress | Description |
+|--------|----------|-------------|
+| `queued` | 0% | Job created, waiting for worker |
+| `discovering` | 15% | Finding pages on site |
+| `selecting` | 35% | AI choosing important pages |
+| `scraping` | 50% | Downloading page content |
+| `analyzing` | 70% | Running audit checks |
+| `aggregating` | 90% | Calculating final scores |
+| `completed` | 100% | Results ready |
+| `failed` | - | Error occurred (see error_message) |
+
+### Error Handling
+
+- **Discovery fails**: Too many pages, site blocks crawlers → Returns partial results
+- **LLM fails**: Timeout, API error → Falls back to heuristic selection
+- **Scraping fails**: 404, network error → Skips page, continues with others
+- **Analysis fails**: Invalid HTML, parsing error → Marks page as errored
+- **Any task times out**: After 1 hour, task is killed and job marked `failed`
+
+### Data Flow
+
+```
+┌──────────┐
+│  Client  │
+└────┬─────┘
+     │ POST /scan/start-async
+     ▼
+┌──────────────┐
+│   FastAPI    │ Creates ScanJob (queued)
+└────┬─────────┘
+     │ Queue run_scan_pipeline
+     ▼
+┌──────────────┐
+│  RabbitMQ    │ Routes to scan.orchestration
+└────┬─────────┘
+     │
+     ▼
+┌──────────────┐
+│Celery Worker │ Executes pipeline chain
+└────┬─────────┘
+     │
+     ├─→ discover_pages (Selenium) → pages_discovered
+     ├─→ select_pages (Gemini AI) → pages_selected
+     ├─→ scrape_page (per page) → HTML content
+     ├─→ extract_data (per page) → Structured data
+     ├─→ analyze_page (per page) → Issues + scores
+     └─→ aggregate_results → Final score
+            │
+            ▼
+     ┌──────────────┐
+     │ PostgreSQL   │ Stores results
+     └────┬─────────┘
+          │
+          ▼
+     ┌──────────┐
+     │  Client  │ GET /scan/{job_id}/results
+     └──────────┘
+```
+
+---
+
 ## 🚀 Quick Start (Development)
 
 ### Prerequisites
@@ -10,14 +153,7 @@ This document explains how to run the async scanning system with Celery workers 
 - Google Gemini API key configured in `.env`
 
 ### Start All Services
-
-**Option 1: Quick Start Script (Recommended)**
-```powershell
-.\scripts\quickstart.ps1
-# Select option 7 (Run ALL)
-```
-
-**Option 2: Manual Start**
+Manual Start**
 ```powershell
 # Terminal 1: Check RabbitMQ is running
 Get-Service -Name RabbitMQ
