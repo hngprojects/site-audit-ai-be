@@ -14,12 +14,12 @@ def get_sync_db():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from app.platform.config import settings
-    
+
     # Convert async URL to sync if needed
     db_url = settings.DATABASE_URL
     if db_url.startswith("postgresql+asyncpg://"):
         db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
-    
+
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return SessionLocal()
@@ -32,7 +32,7 @@ def update_job_status(job_id: str, status, **kwargs):
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
-    
+
     db = get_sync_db()
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
@@ -64,30 +64,32 @@ def discover_pages(
 ) -> Dict[str, Any]:
     """
     Discover all pages on a website.
-    
+
     Args:
         job_id: The scan job ID
         url: Root URL to crawl
         max_pages: Maximum pages to discover
-        
+
     Returns:
         Dict with discovered pages and metadata
     """
     from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
-    
+
     logger.info(f"[{job_id}] Starting page discovery for {url}")
     from app.features.scan.models.scan_job import ScanJobStatus
-    update_job_status(job_id, ScanJobStatus.discovering, started_at=datetime.utcnow())
-    
+    update_job_status(job_id, ScanJobStatus.discovering,
+                      started_at=datetime.utcnow())
+
     try:
         discovery_service = PageDiscoveryService()
         pages = discovery_service.discover_pages(url=url, max_pages=max_pages)
-        
+
         # Store discovered pages in DB
         _save_discovered_pages(job_id, pages)
-        
-        update_job_status(job_id, ScanJobStatus.discovering, pages_discovered=len(pages))
-        
+
+        update_job_status(job_id, ScanJobStatus.discovering,
+                          pages_discovered=len(pages))
+
         logger.info(f"[{job_id}] Discovered {len(pages)} pages")
         return {
             "job_id": job_id,
@@ -95,7 +97,7 @@ def discover_pages(
             "count": len(pages),
             "url": url
         }
-        
+
     except Exception as e:
         logger.error(f"[{job_id}] Discovery failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -135,7 +137,7 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
-    
+
     db = get_sync_db()
     try:
         for page_url in pages:
@@ -151,7 +153,6 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
         db.commit()
     finally:
         db.close()
-
 
 
 # Phase 2: Selection
@@ -171,25 +172,26 @@ def select_pages(
 ) -> Dict[str, Any]:
     """
     Select important pages using LLM.
-    
+
     Args:
         discovery_result: Output from discover_pages task
         top_n: Maximum pages to select
         referer: HTTP referer for LLM API
         site_title: Site title for LLM API
-        
+
     Returns:
         Dict with selected pages
     """
     from app.features.scan.services.analysis.page_selector import PageSelectorService
-    
+
     job_id = discovery_result["job_id"]
     pages = discovery_result["pages"]
-    
-    logger.info(f"[{job_id}] Selecting important pages from {len(pages)} discovered")
+
+    logger.info(
+        f"[{job_id}] Selecting important pages from {len(pages)} discovered")
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.selecting)
-    
+
     try:
         selector = PageSelectorService()
         selected = selector.filter_important_pages(
@@ -198,12 +200,13 @@ def select_pages(
             referer=referer,
             site_title=site_title
         )
-        
+
         # Update pages in DB
         _mark_selected_pages(job_id, selected)
-        
-        update_job_status(job_id, ScanJobStatus.selecting, pages_selected=len(selected))
-        
+
+        update_job_status(job_id, ScanJobStatus.selecting,
+                          pages_selected=len(selected))
+
         logger.info(f"[{job_id}] Selected {len(selected)} pages for analysis")
         return {
             "job_id": job_id,
@@ -211,7 +214,7 @@ def select_pages(
             "count": len(selected),
             "total_discovered": len(pages)
         }
-        
+
     except Exception as e:
         logger.error(f"[{job_id}] Selection failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -225,16 +228,16 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
-    
+
     db = get_sync_db()
     try:
         selected_normalized = {url.rstrip('/') for url in selected_urls}
         pages = db.query(ScanPage).filter(ScanPage.scan_job_id == job_id).all()
-        
+
         for page in pages:
             if page.page_url_normalized in selected_normalized:
                 page.is_selected_by_llm = True
-        
+
         db.commit()
     finally:
         db.close()
@@ -285,14 +288,14 @@ def scrape_page(
         job_id: The scan job ID
         page_url: URL to scrape
         page_id: Optional page record ID
-        
+
     Returns:
         Dict with scraped HTML and metadata (fully serializable)
     """
     from app.features.scan.services.scraping.scraping_service import ScrapingService
     
     logger.info(f"[{job_id}] Scraping page: {page_url}")
-    
+
     try:
         # Use improved scrape_page method that returns serializable data
         scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
@@ -359,7 +362,7 @@ def extract_data(
     html = scrape_result.get("html")
     
     logger.info(f"[{job_id}] Extracting data from: {page_url}")
-    
+
     try:
         if not html:
             raise ValueError("No HTML content provided in scrape_result")
@@ -398,52 +401,46 @@ def extract_data(
 )
 def analyze_page(
     self,
+    job_id: str,
     extraction_result: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Analyze a page using LLM for SEO, accessibility, etc.
-    
-    This is a placeholder - team will integrate their analysis service here.
-    
-    Args:
-        extraction_result: Output from extract_data task
-        
-    Returns:
-        Dict with analysis results and scores
-    """
-    job_id = extraction_result["job_id"]
-    page_url = extraction_result["page_url"]
-    
+
+    from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
+
+    data = extraction_result.get("data", {})
+    meta = extraction_result.get("meta", {})
+
+    page_url = meta.get("url")
+    page_id = meta.get("page_id")
+    scan_date = meta.get("scan_date") or datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
     logger.info(f"[{job_id}] Analyzing page: {page_url}")
-    
+
     try:
-        # TODO: Team integrates their LLM analysis service here
-        # For now, return placeholder scores
-        analysis = {
-            "score_overall": 75,
-            "score_seo": 80,
-            "score_accessibility": 70,
-            "score_performance": 75,
-            "score_design": 72,
-            "issues": []
-        }
-        
-        # Update page record with scores
-        _update_page_scores(
-            extraction_result.get("page_id"),
-            analysis
+        analysis_result = PageAnalyzerService.analyze_page(extraction_result)
+
+        analysis = _transform_analysis_result(analysis_result)
+
+        _update_page_analysis(page_id, analysis, analysis_result)
+
+        logger.info(
+            f"[{job_id}] Analysis complete for {page_url}: {analysis['overall_score']}/100"
         )
-        
+
         return {
             "job_id": job_id,
-            "page_id": extraction_result.get("page_id"),
+            "page_id": page_id,
             "page_url": page_url,
-            "analysis": analysis
+            "analysis": analysis,
+            "detailed_analysis": analysis_result
         }
-        
+
     except Exception as e:
-        logger.error(f"[{job_id}] Analysis failed for {page_url}: {e}")
-        raise
+        logger.error(
+            f"[{job_id}] Analysis failed for {page_url}: {e}",
+            exc_info=True
+        )
+        self.retry(exc=e)
 
 
 def _update_page_extracted_data(page_id: str, extracted: Dict):
@@ -487,25 +484,39 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
 def _update_page_scores(page_id: Optional[str], analysis: Dict):
     """Update page scores in database."""
     if not page_id:
+        logger.warning("No page_id provided, skipping database update")
         return
-    
+
     # Import all related models to ensure SQLAlchemy mappers are configured
     from app.features.auth.models.user import User  # noqa: F401
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
-    
+
     db = get_sync_db()
     try:
         page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
         if page:
-            page.score_overall = analysis.get("score_overall")
-            page.score_seo = analysis.get("score_seo")
-            page.score_accessibility = analysis.get("score_accessibility")
+            page.score_overall = analysis.get("overall_score")
+            page.score_ux = analysis.get("score_ux")
             page.score_performance = analysis.get("score_performance")
-            page.score_design = analysis.get("score_design")
+            page.score_seo = analysis.get("score_seo")
+
+            # Store detailed analysis as JSON if column exists
+            if hasattr(page, 'analysis_details'):
+                page.analysis_details = detailed_analysis
+
             page.scanned_at = datetime.utcnow()
             db.commit()
+
+            logger.info(f"Updated page {page_id} with analysis scores")
+        else:
+            logger.warning(f"Page {page_id} not found in database")
+
+    except Exception as e:
+        logger.error(f"Failed to update page analysis: {e}", exc_info=True)
+        db.rollback()
+        raise
     finally:
         db.close()
 
@@ -525,16 +536,17 @@ def aggregate_results(
 ) -> Dict[str, Any]:
     """
     Aggregate all page analysis results into final scores.
-    
+
     Args:
         analysis_results: List of outputs from analyze_page tasks
         job_id: The scan job ID
-        
+
     Returns:
         Dict with aggregated scores and summary
     """
-    logger.info(f"[{job_id}] Aggregating results from {len(analysis_results)} pages")
-    
+    logger.info(
+        f"[{job_id}] Aggregating results from {len(analysis_results)} pages")
+
     try:
         # Calculate average scores
         if not analysis_results:
@@ -549,7 +561,7 @@ def aggregate_results(
         else:
             valid_results = [r for r in analysis_results if r.get("analysis")]
             count = len(valid_results)
-            
+
             aggregated = {
                 "score_overall": sum(r["analysis"]["score_overall"] for r in valid_results) // count if count else 0,
                 "score_seo": sum(r["analysis"]["score_seo"] for r in valid_results) // count if count else 0,
@@ -559,18 +571,19 @@ def aggregate_results(
                 "total_issues": sum(len(r["analysis"].get("issues", [])) for r in valid_results),
                 "pages_analyzed": count
             }
-        
+
         # Update job with final scores
         _update_job_final_scores(job_id, aggregated)
-        
-        logger.info(f"[{job_id}] Scan completed with overall score: {aggregated['score_overall']}")
-        
+
+        logger.info(
+            f"[{job_id}] Scan completed with overall score: {aggregated['score_overall']}")
+
         return {
             "job_id": job_id,
             "status": "completed",
             "scores": aggregated
         }
-        
+
     except Exception as e:
         logger.error(f"[{job_id}] Aggregation failed: {e}")
         update_job_status(job_id, "failed", error_message=str(e))
@@ -584,7 +597,7 @@ def _update_job_final_scores(job_id: str, scores: Dict):
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
-    
+
     db = get_sync_db()
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
@@ -620,33 +633,33 @@ def run_scan_pipeline(
 ) -> str:
     """
     Orchestrate the full scan pipeline.
-    
+
     Creates a Celery workflow that chains:
     1. Discovery -> 2. Selection -> 3. [Scrape -> Extract -> Analyze] for each page -> 4. Aggregate
-    
+
     Args:
         job_id: The scan job ID
         url: Root URL to scan
         top_n: Max pages to select
         max_pages: Max pages to discover
-        
+
     Returns:
         Job ID for tracking
     """
     logger.info(f"[{job_id}] Starting scan pipeline for {url}")
-    
+
     # Chain: Discovery -> Selection
     # Then fan-out to process each page in parallel
     # Finally aggregate results
-    
+
     workflow = chain(
         discover_pages.s(job_id, url, max_pages),
         select_pages.s(top_n=top_n, referer=url, site_title=""),
-        process_selected_pages.s(job_id)
+        process_selected_pages.s(job_id),
     )
-    
+
     workflow.apply_async()
-    
+
     return job_id
 
 
@@ -661,15 +674,15 @@ def process_selected_pages(
 ) -> Dict[str, Any]:
     """
     Process all selected pages in parallel, then aggregate.
-    
+
     Creates a chord: parallel page processing -> aggregation
     """
     selected_pages = selection_result.get("selected_pages", [])
-    
+
     if not selected_pages:
         logger.warning(f"[{job_id}] No pages selected for processing")
         return aggregate_results.delay([], job_id)
-    
+
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.scraping)
     
@@ -687,8 +700,8 @@ def process_selected_pages(
             analyze_page.s()
         )
         page_tasks.append(page_workflow)
-    
+
     # Chord: run all page tasks in parallel, then aggregate
     workflow = chord(page_tasks)(aggregate_results.s(job_id))
-    
+
     return {"job_id": job_id, "pages_queued": len(selected_pages)}
