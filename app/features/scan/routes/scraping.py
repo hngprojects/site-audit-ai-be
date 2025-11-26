@@ -90,6 +90,37 @@ async def scrape_pages(
     
     Args:
         data: ScrapingRequest with pages to scrape
+        db: Database session
+        
+    Returns:
+        ScrapingResponse with scraped page data
+    """
+    try:
+        # Initialize scraping service
+        scraper = ScrapingService(headless=True, timeout=30)
+        
+        # Scrape all pages
+        scraped_pages = scraper.scrape_multiple_pages(data.pages)
+        
+        # TODO: Store scraped data in ScanPage records
+        # - Save HTML content, metadata, and extracted data
+        # - Update ScanJob scraping_status to 'completed'
+        # - Calculate and store page scores
+        
+        return api_response(
+            data={
+                "scraped_pages": scraped_pages,
+                "count": len(scraped_pages),
+                "job_id": data.job_id,
+                "message": f"Successfully scraped {len(scraped_pages)} pages"
+            }
+        )
+            
+    except Exception as e:
+        # TODO: If job_id provided, mark scraping_status = 'failed'
+        return api_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=f"Scraping failed: {str(e)}",
             data={}
         )
 
