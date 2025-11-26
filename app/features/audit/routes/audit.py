@@ -1,38 +1,36 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
-import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.platform.db.session import get_db
+from app.platform.logger import get_logger
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from app.platform.response import api_response
-from app.features.audit.utils.page_analyzer import PageAnalyzer
+# Make sure to import the new FullAuditResult if needed for typing, though usually implied
+from app.features.audit.services.audit import PageAnalyzer 
 from app.features.audit.utils.test_content import page_content
 from app.features.audit.schemas.audit import AuditIn, AuditOut, UXOut, SEOOut, SpeedOut
 
+logger = get_logger("audit_routes")
 router = APIRouter()
-
 
 @router.post("/audit", response_model=AuditOut)
 async def audit_page(
     audit_in: AuditIn,
     background_tasks: BackgroundTasks,
 ):
+    logger.info(f"Starting audit for URL: {audit_in.url}")
+
     try:
-        print(f"Audit requested for: {audit_in.url}")
-
         analyzer = PageAnalyzer()
+        
+        # result is now an instance of FullAuditResult
+        result = await analyzer.analyze_page(audit_in.url, page_content)
 
-        # Replace page_content with actual page content. Right now, I am using data from a website that I stored.
-        ux_task = analyzer.analyze_ux(audit_in.url, page_content)
-        seo_task = analyzer.analyze_seo(audit_in.url, page_content)
-        speed_task = analyzer.analyze_speed(audit_in.url, page_content)
+        # 4. Data Mapping (Updated for Object Access)
+        # Since result.ux is already a Pydantic model (UXAnalysis), 
+        # we can dump it to dict or use it directly if schemas match exactly.
+        
+        ux_out = UXOut(**result.ux.model_dump())
+        seo_out = SEOOut(**result.seo.model_dump())
+        speed_out = SpeedOut(**result.speed.model_dump())
 
-        ux, seo, speed = await asyncio.gather(ux_task, seo_task, speed_task)
-
-        ux_out = UXOut(**ux.model_dump())
-        seo_out = SEOOut(**seo.model_dump())
-        speed_out = SpeedOut(**speed.model_dump())
-
-        # Revisit, right now we are using a basic average calculation
-        overall = int((ux.score + seo.score + speed.score) / 3)
+        overall = int((ux_out.score + seo_out.score + speed_out.score) / 3)
 
         audit_result = AuditOut(
             ux=ux_out,
@@ -47,6 +45,12 @@ async def audit_page(
             status_code=200
         )
 
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Validation error for {audit_in.url}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print("Audit error:", e)
-        raise HTTPException(status_code=400, detail="Website Audit failed")
+        logger.error(f"Critical internal error auditing {audit_in.url}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail="An internal error occurred while processing the audit."
+        )
