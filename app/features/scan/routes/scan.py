@@ -295,16 +295,16 @@ async def get_scan_status(
             progress_percent = 0
             current_step = "Waiting to start"
         elif status_str == "discovering":
-            progress_percent = 15
+            progress_percent = 10
             current_step = f"Finding pages on site"
         elif status_str == "selecting":
-            progress_percent = 35
+            progress_percent = 30
             current_step = f"Selecting important pages from {job.pages_discovered or 0} discovered pages"
         elif status_str == "scraping":
-            progress_percent = 50
+            progress_percent = 40
             current_step = f"Scraping {job.pages_selected or 0} pages"
         elif status_str == "analyzing":
-            progress_percent = 70
+            progress_percent = 60
             current_step = "Analyzing content"
         elif status_str == "aggregating":
             progress_percent = 90
@@ -374,11 +374,11 @@ async def get_scan_results(
                 data={}
             )
         
-        if job.status != "completed":
+        if job.status != ScanJobStatus.completed:
             return api_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                message=f"Scan is not completed yet. Current status: {job.status}",
-                data={"status": job.status}
+                message=f"Scan is not completed yet. Current status: {job.status.value}",
+                data={"status": job.status.value}
             )
         
         # Query all pages for this job
@@ -386,7 +386,7 @@ async def get_scan_results(
         pages_result = await db.execute(pages_query)
         all_pages = pages_result.scalars().all()
         
-        # Build results
+        # Build results with detailed analysis
         selected_pages = [
             {
                 "url": page.page_url,
@@ -396,7 +396,8 @@ async def get_scan_results(
                 "score_performance": page.score_performance,
                 "score_design": page.score_design,
                 "critical_issues": page.critical_issues_count,
-                "warnings": page.warning_issues_count
+                "warnings": page.warning_issues_count,
+                "analysis_details": page.analysis_details  # Full LLM analysis
             }
             for page in all_pages if page.is_selected_by_llm
         ]
