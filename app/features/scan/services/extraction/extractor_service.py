@@ -1,6 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from app.features.scan.schemas.metadata import (
     MetadataExtractionResult,
     TitleMetadata,
@@ -401,4 +401,100 @@ class ExtractorService:
             "readability_score": round(readability_score, 2),
             "keyword_analysis": keyword_data
         }
+    
+
+    @staticmethod
+    def extract_from_html(html: str, url: str) -> Dict[str, Any]:
+        """
+        Extract all data from HTML string (for Celery tasks).
+        This is a convenience method that doesn't require Selenium WebDriver.
+        
+        Args:
+            html: HTML content as string
+            url: URL of the page (for metadata)
+            
+        Returns:
+            Dict with all extracted data in standardized API response format:
+            {
+                "status_code": 200,
+                "status": "success",
+                "message": "Operation successful",
+                "data": {
+                    "heading_data": {...},
+                    "images_data": [...],
+                    "issues_data": {...},
+                    "text_content_data": {...},
+                    "metadata_data": {...}
+                }
+            }
+        """
+        from app.features.scan.services.scraping.scraping_service import ScrapingService
+        
+        # Load HTML in Selenium to use existing extraction methods
+        driver = None
+        try:
+            driver = ScrapingService.build_driver()
+            driver.get("data:text/html;charset=utf-8," + html)
+            
+            # Extract all data using existing methods
+            metadata = ExtractorService.extract_metadata(driver)
+            headings = ExtractorService.extract_headings(driver)
+            images = ExtractorService.extract_images(driver)
+            accessibility = ExtractorService.extract_accessibility(driver, headings=headings, images=images)
+            text_content = ExtractorService.extract_text_content(driver)
+            
+            # Build standardized response format
+            return {
+                "status_code": 200,
+                "status": "success",
+                "message": "Operation successful",
+                "data": {
+                    "heading_data": headings,
+                    "images_data": images,
+                    "issues_data": accessibility,
+                    "text_content_data": text_content,
+                    "metadata_data": {
+                        "url": url,
+                        "title": {
+                            "value": metadata.title.value,
+                            "length": metadata.title.length,
+                            "is_valid": metadata.title.is_valid,
+                            "issues": [
+                                {"field": issue.field, "severity": issue.severity, "message": issue.message}
+                                for issue in metadata.title.issues
+                            ]
+                        },
+                        "description": {
+                            "value": metadata.description.value,
+                            "length": metadata.description.length,
+                            "is_valid": metadata.description.is_valid,
+                            "issues": [
+                                {"field": issue.field, "severity": issue.severity, "message": issue.message}
+                                for issue in metadata.description.issues
+                            ]
+                        },
+                        "keywords": metadata.keywords,
+                        "open_graph": {
+                            "title": metadata.open_graph.title if metadata.open_graph else None,
+                            "description": metadata.open_graph.description if metadata.open_graph else None,
+                            "image": metadata.open_graph.image if metadata.open_graph else None,
+                            "url": metadata.open_graph.url if metadata.open_graph else None,
+                            "type": metadata.open_graph.type if metadata.open_graph else None,
+                        } if metadata.open_graph else None,
+                        "canonical_url": metadata.canonical_url,
+                        "viewport": metadata.viewport,
+                        "has_title": metadata.has_title,
+                        "has_description": metadata.has_description,
+                        "overall_valid": metadata.overall_valid,
+                        "total_issues": metadata.total_issues
+                    }
+                }
+            }
+            
+        finally:
+            if driver:
+                try:
+                    driver.quit()
+                except:
+                    pass
 

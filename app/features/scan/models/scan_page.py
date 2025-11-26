@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Integer, Float, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Boolean, Integer, Float, DateTime, Text, ForeignKey, Index, JSON
 from datetime import datetime
 
 from app.platform.db.base import BaseModel
@@ -38,6 +38,9 @@ class ScanPage(BaseModel):
     score_accessibility = Column(Integer, nullable=True)
     score_performance = Column(Integer, nullable=True)
     score_design = Column(Integer, nullable=True)
+    
+    # Detailed LLM analysis results (structured JSON from Gemini)
+    analysis_details = Column(JSON, nullable=True)
     
     # Issue counts (aggregated)
     critical_issues_count = Column(Integer, default=0, nullable=False)

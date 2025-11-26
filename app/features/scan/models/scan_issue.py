@@ -1,7 +1,25 @@
-from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, Index, Enum
 from datetime import datetime
+import enum
 
 from app.platform.db.base import BaseModel
+
+
+class IssueCategory(enum.Enum):
+    """Issue category classification"""
+    seo = "seo"
+    accessibility = "accessibility"
+    design = "design"
+    performance = "performance"
+
+
+class IssueSeverity(enum.Enum):
+    """Issue severity levels"""
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+    info = "info"
 
 
 class ScanIssue(BaseModel):
@@ -17,15 +35,14 @@ class ScanIssue(BaseModel):
     scan_job_id = Column(String, ForeignKey("scan_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Issue classification
-    category = Column(String(50), nullable=False, index=True)  # 'seo', 'accessibility', 'design', 'performance' Maybe we use an ENUM herre?
-    severity = Column(String(50), nullable=False, index=True)  # 'critical', 'high', 'medium', 'low', 'info' Enum here too?
+    category = Column(Enum(IssueCategory), nullable=False, index=True)
+    severity = Column(Enum(IssueSeverity), nullable=False, index=True)
     
     # Issue details
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=False)
     what_this_means = Column(Text, nullable=True)
     recommendation = Column(Text, nullable=True)
-    #What field to use for 'What this means'?
 
     # Element context (if applicable)
     element_selector = Column(String(512), nullable=True)  # CSS selector

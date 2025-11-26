@@ -9,12 +9,16 @@ def create_celery_app() -> Celery:
     Create and configure the Celery application.
     
     Queue Structure:
+    - scan.orchestration: Pipeline orchestration tasks
     - scan.discovery: Page discovery tasks (Selenium crawling)
     - scan.selection: LLM-based page selection tasks
-    - scan.scraping: HTML/content scraping tasks
-    - scan.extraction: Data extraction tasks
+    - scan.scraping: HTML scraping tasks (returns serializable data)
+    - scan.extraction: Data extraction from HTML
     - scan.analysis: LLM analysis tasks
     - scan.aggregation: Final score aggregation tasks
+    
+    Note: ScrapingService returns serializable data (HTML + metadata)
+    instead of WebDriver objects, allowing proper task separation.
     """
     celery_app = Celery(
         "site_audit_ai",
@@ -43,8 +47,9 @@ def create_celery_app() -> Celery:
             "app.features.scan.workers.tasks.extract_data": {"queue": "scan.extraction"},
             "app.features.scan.workers.tasks.analyze_page": {"queue": "scan.analysis"},
             "app.features.scan.workers.tasks.aggregate_results": {"queue": "scan.aggregation"},
-            # Orchestrator task
+            # Orchestrator tasks
             "app.features.scan.workers.tasks.run_scan_pipeline": {"queue": "scan.orchestration"},
+            "app.features.scan.workers.tasks.process_selected_pages": {"queue": "scan.orchestration"},
         },
         
         # Define queues

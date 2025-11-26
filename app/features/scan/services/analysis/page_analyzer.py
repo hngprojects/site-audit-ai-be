@@ -14,8 +14,8 @@ GOOGLE_GEMINI_API_KEY = settings.GOOGLE_GEMINI_API_KEY
 
 class Problem(BaseModel):
     icon: str = Field(description="warning or alert icon type")
-    title: str
-    description: str
+    title: str = Field(description="Short problem title")
+    description: str = Field(description="Detailed problem description")
 
 class PageAnalysisResult(BaseModel):
     url: str = Field(description="URL of the analyzed page")
@@ -278,7 +278,34 @@ class PageAnalyzerService:
             )
 
             print(f"Gemini Response: {response.text}")
-            result_data = json.loads(response.text)
+            
+            # Try to parse JSON - handle malformed responses
+            try:
+                result_data = json.loads(response.text)
+            except json.JSONDecodeError as json_err:
+                logger.error(f"JSON parse error: {json_err}")
+                # Try to extract valid JSON by cleaning the response
+                cleaned_text = response.text.strip()
+                # If it starts with { and ends with }, try to find the last valid }
+                if cleaned_text.startswith('{'):
+                    # Find the last occurrence of } and truncate there
+                    last_brace = cleaned_text.rfind('}')
+                    if last_brace > 0:
+                        cleaned_text = cleaned_text[:last_brace + 1]
+                        result_data = json.loads(cleaned_text)
+                    else:
+                        raise
+                else:
+                    raise
+            
+            # Pre-process: ensure all Problem objects have description field
+            for field_name in ['ux_problems', 'performance_problems', 'seo_problems']:
+                if field_name in result_data and isinstance(result_data[field_name], list):
+                    for problem in result_data[field_name]:
+                        if isinstance(problem, dict) and 'description' not in problem:
+                            # Use title as fallback description if missing
+                            problem['description'] = problem.get('title', '')
+            
             result = PageAnalysisResult(**result_data)
 
             logger.info(f"Gemini API analysis completed for {result.url}")

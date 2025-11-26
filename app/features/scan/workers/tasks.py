@@ -388,61 +388,6 @@ def extract_data(
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
         raise
 
-
-# =============================================================================
-# Phase 5: Analysis (per-page, LLM)
-# =============================================================================
-
-@celery_app.task(
-    bind=True,
-    name="app.features.scan.workers.tasks.analyze_page",
-    max_retries=3,
-    default_retry_delay=10
-)
-def analyze_page(
-    self,
-    job_id: str,
-    extraction_result: Dict[str, Any]
-) -> Dict[str, Any]:
-
-    from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
-
-    data = extraction_result.get("data", {})
-    meta = extraction_result.get("meta", {})
-
-    page_url = meta.get("url")
-    page_id = meta.get("page_id")
-    scan_date = meta.get("scan_date") or datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-
-    logger.info(f"[{job_id}] Analyzing page: {page_url}")
-
-    try:
-        analysis_result = PageAnalyzerService.analyze_page(extraction_result)
-
-        analysis = _transform_analysis_result(analysis_result)
-
-        _update_page_analysis(page_id, analysis, analysis_result)
-
-        logger.info(
-            f"[{job_id}] Analysis complete for {page_url}: {analysis['overall_score']}/100"
-        )
-
-        return {
-            "job_id": job_id,
-            "page_id": page_id,
-            "page_url": page_url,
-            "analysis": analysis,
-            "detailed_analysis": analysis_result
-        }
-
-    except Exception as e:
-        logger.error(
-            f"[{job_id}] Analysis failed for {page_url}: {e}",
-            exc_info=True
-        )
-        self.retry(exc=e)
-
-
 def _update_page_extracted_data(page_id: str, extracted: Dict):
     """Update page record with extracted data for later analysis."""
     from app.features.auth.models.user import User  # noqa: F401
@@ -480,9 +425,210 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
     finally:
         db.close()
 
+# =============================================================================
+# Phase 5: Analysis (per-page, LLM)
+# =============================================================================
 
-def _update_page_scores(page_id: Optional[str], analysis: Dict):
-    """Update page scores in database."""
+@celery_app.task(
+    bind=True,
+    name="app.features.scan.workers.tasks.analyze_page",
+    max_retries=3,
+    default_retry_delay=10
+)
+def analyze_page(
+    self,
+    extraction_result: Dict[str, Any],
+    job_id: str
+) -> Dict[str, Any]:
+
+    from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
+    from app.features.scan.models.scan_job import ScanJobStatus
+
+    # Extract metadata from the extraction result
+    page_url = extraction_result.get("page_url")
+    page_id = extraction_result.get("page_id")
+    
+    # Get the extracted data in the format PageAnalyzerService expects
+    extracted_data = extraction_result.get("extracted_data", {})
+
+    # Update status to analyzing when first analysis task starts
+    update_job_status(job_id, ScanJobStatus.analyzing)
+
+    logger.info(f"[{job_id}] Analyzing page: {page_url}")
+
+    try:
+        # Pass extracted_data which has the format: {status_code, status, message, data}
+        analysis_result = PageAnalyzerService.analyze_page(extracted_data)
+
+        analysis = _transform_analysis_result(analysis_result)
+
+        _update_page_analysis(page_id, analysis, analysis_result)
+
+        logger.info(
+            f"[{job_id}] Analysis complete for {page_url}: {analysis['overall_score']}/100"
+        )
+
+        return {
+            "job_id": job_id,
+            "page_id": page_id,
+            "page_url": page_url,
+            "analysis": analysis,
+            "detailed_analysis": analysis_result
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[{job_id}] Analysis failed for {page_url}: {e}",
+            exc_info=True
+        )
+        self.retry(exc=e)
+
+
+def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
+    """
+    Transform PageAnalysisResult dict to database-friendly format.
+    Maps LLM output (UX/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
+
+    Args:
+        analysis_result: Dict from PageAnalyzerService with nested structure:
+            {overall_score, ux: {score, ...}, performance: {score, ...}, seo: {score, ...}}
+
+    Returns:
+        Dict with flat structure for database storage
+    """
+    ux = analysis_result.get("ux", {})
+    performance = analysis_result.get("performance", {})
+    seo = analysis_result.get("seo", {})
+    
+    return {
+        "overall_score": analysis_result.get("overall_score"),
+        # Map UX score to both accessibility and design (UX encompasses both)
+        "score_accessibility": ux.get("score"),
+        "score_design": ux.get("score"),  # For MVP, use same UX score for design
+        "score_performance": performance.get("score"),
+        "score_seo": seo.get("score"),
+        # Keep impact scores for potential future use
+        "ux_impact_score": ux.get("impact_score"),
+        "performance_impact_score": performance.get("impact_score"),
+        "seo_impact_score": seo.get("impact_score"),
+    }
+
+
+def _map_icon_to_severity(icon: str) -> str:
+    """
+    Map problem icon from LLM response to severity level.
+    
+    Args:
+        icon: Icon string from LLM ('alert' or 'warning')
+        
+    Returns:
+        Severity level string
+    """
+    if icon == "alert":
+        return "high"
+    elif icon == "warning":
+        return "medium"
+    else:
+        return "low"
+
+
+def _create_scan_issues(
+    page_id: str,
+    job_id: str,
+    detailed_analysis: Dict[str, Any]
+) -> int:
+    """
+    Extract problems from detailed_analysis and create ScanIssue records.
+    
+    Args:
+        page_id: Database ID of the scanned page
+        job_id: Database ID of the scan job
+        detailed_analysis: Full structured analysis result from LLM
+        
+    Returns:
+        Number of issues created
+    """
+    from app.features.scan.models.scan_issue import ScanIssue, IssueCategory, IssueSeverity
+    
+    db = get_sync_db()
+    issues_created = 0
+    
+    try:
+        # Extract problems from each category
+        categories_map = {
+            "ux": IssueCategory.accessibility,  # UX problems map to accessibility
+            "performance": IssueCategory.performance,
+            "seo": IssueCategory.seo,
+        }
+        
+        for section_key, issue_category in categories_map.items():
+            section = detailed_analysis.get(section_key, {})
+            problems = section.get("problems", [])
+            
+            for problem in problems:
+                try:
+                    # Extract problem details
+                    icon = problem.get("icon", "warning")
+                    title = problem.get("title", "")
+                    description = problem.get("description", title)  # Fallback to title if no description
+                    
+                    # Skip if no title
+                    if not title:
+                        logger.warning(f"Skipping problem with no title in {section_key} section")
+                        continue
+                    
+                    # Map icon to severity
+                    severity_str = _map_icon_to_severity(icon)
+                    
+                    # Create ScanIssue record
+                    issue = ScanIssue(
+                        scan_page_id=page_id,
+                        scan_job_id=job_id,
+                        category=issue_category,
+                        severity=IssueSeverity[severity_str],
+                        title=title[:512],  # Truncate to column limit
+                        description=description,
+                        what_this_means=None,  # Not provided by current LLM response
+                        recommendation=None,  # Not provided by current LLM response
+                        element_selector=None,  # Not provided by current LLM response
+                        element_html=None,  # Not provided by current LLM response
+                        impact_score=None,  # Not provided by current LLM response
+                    )
+                    
+                    db.add(issue)
+                    issues_created += 1
+                    
+                except Exception as e:
+                    logger.error(f"Failed to create issue from problem: {e}", exc_info=True)
+                    continue
+        
+        # Commit all issues at once
+        db.commit()
+        logger.info(f"Created {issues_created} ScanIssue records for page {page_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to create scan issues: {e}", exc_info=True)
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    
+    return issues_created
+
+
+def _update_page_analysis(
+    page_id: Optional[str],
+    analysis: Dict[str, Any],
+    detailed_analysis: Dict[str, Any]
+) -> None:
+    """
+    Update page analysis results in database.
+
+    Args:
+        page_id: Database ID of the page
+        analysis: Flat analysis scores
+        detailed_analysis: Full structured analysis result
+    """
     if not page_id:
         logger.warning("No page_id provided, skipping database update")
         return
@@ -498,13 +644,64 @@ def _update_page_scores(page_id: Optional[str], analysis: Dict):
         page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
         if page:
             page.score_overall = analysis.get("overall_score")
-            page.score_ux = analysis.get("score_ux")
+            page.score_accessibility = analysis.get("score_accessibility")
+            page.score_design = analysis.get("score_design")
             page.score_performance = analysis.get("score_performance")
             page.score_seo = analysis.get("score_seo")
 
             # Store detailed analysis as JSON if column exists
             if hasattr(page, 'analysis_details'):
                 page.analysis_details = detailed_analysis
+                logger.info(f"Stored detailed_analysis for page {page_id}")
+            else:
+                logger.warning(f"Page model missing 'analysis_details' column - detailed analysis not saved")
+
+            page.scanned_at = datetime.utcnow()
+            db.commit()
+
+            logger.info(f"Updated page {page_id} with analysis scores")
+            
+            # Create individual ScanIssue records from problems in detailed_analysis
+            try:
+                # Get job_id from the page object
+                job_id = page.scan_job_id
+                issues_count = _create_scan_issues(page_id, job_id, detailed_analysis)
+                logger.info(f"Created {issues_count} issues for page {page_id}")
+            except Exception as e:
+                logger.error(f"Failed to create scan issues for page {page_id}: {e}", exc_info=True)
+                # Don't fail the whole analysis if issue creation fails
+        else:
+            logger.warning(f"Page {page_id} not found in database")
+
+    except Exception as e:
+        logger.error(f"Failed to update page analysis: {e}", exc_info=True)
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _update_page_scores(page_id: Optional[str], analysis: Dict):
+    """Update page scores in database (deprecated - use _update_page_analysis instead)."""
+    if not page_id:
+        logger.warning("No page_id provided, skipping database update")
+        return
+
+    # Import all related models to ensure SQLAlchemy mappers are configured
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            page.score_overall = analysis.get("overall_score")
+            page.score_accessibility = analysis.get("score_accessibility")
+            page.score_design = analysis.get("score_design")
+            page.score_performance = analysis.get("score_performance")
+            page.score_seo = analysis.get("score_seo")
 
             page.scanned_at = datetime.utcnow()
             db.commit()
@@ -524,6 +721,30 @@ def _update_page_scores(page_id: Optional[str], analysis: Dict):
 # =============================================================================
 # Phase 6: Aggregation
 # =============================================================================
+
+def _count_scan_issues(job_id: str) -> int:
+    """
+    Count total number of ScanIssue records for a job.
+    
+    Args:
+        job_id: Database ID of the scan job
+        
+    Returns:
+        Total count of issues
+    """
+    from app.features.scan.models.scan_issue import ScanIssue
+    
+    db = get_sync_db()
+    try:
+        count = db.query(ScanIssue).filter(ScanIssue.scan_job_id == job_id).count()
+        logger.info(f"Found {count} total issues for job {job_id}")
+        return count
+    except Exception as e:
+        logger.error(f"Failed to count scan issues: {e}", exc_info=True)
+        return 0
+    finally:
+        db.close()
+
 
 @celery_app.task(
     bind=True,
@@ -563,12 +784,12 @@ def aggregate_results(
             count = len(valid_results)
 
             aggregated = {
-                "score_overall": sum(r["analysis"]["score_overall"] for r in valid_results) // count if count else 0,
-                "score_seo": sum(r["analysis"]["score_seo"] for r in valid_results) // count if count else 0,
-                "score_accessibility": sum(r["analysis"]["score_accessibility"] for r in valid_results) // count if count else 0,
-                "score_performance": sum(r["analysis"]["score_performance"] for r in valid_results) // count if count else 0,
-                "score_design": sum(r["analysis"]["score_design"] for r in valid_results) // count if count else 0,
-                "total_issues": sum(len(r["analysis"].get("issues", [])) for r in valid_results),
+                "score_overall": sum(r["analysis"].get("overall_score", 0) for r in valid_results) // count if count else 0,
+                "score_seo": sum(r["analysis"].get("score_seo", 0) for r in valid_results) // count if count else 0,
+                "score_accessibility": sum(r["analysis"].get("score_accessibility", 0) for r in valid_results) // count if count else 0,
+                "score_performance": sum(r["analysis"].get("score_performance", 0) for r in valid_results) // count if count else 0,
+                "score_design": sum(r["analysis"].get("score_design", 0) for r in valid_results) // count if count else 0,
+                "total_issues": _count_scan_issues(job_id),
                 "pages_analyzed": count
             }
 
@@ -697,7 +918,7 @@ def process_selected_pages(
         page_workflow = chain(
             scrape_page.s(job_id, page_url, page_id),
             extract_data.s(),
-            analyze_page.s()
+            analyze_page.s(job_id)
         )
         page_tasks.append(page_workflow)
 

@@ -1,4 +1,4 @@
-You are a website auditing expert. Given a list of URLs from a website, select the most important pages for a comprehensive website audit.
+You are a website auditing expert. Given a list of URLs from a website, select the {top_n} most important pages for a comprehensive website audit.
 
 IMPORTANT RULES:
 1. Select AT MOST {top_n} pages, but ONLY if that many exist

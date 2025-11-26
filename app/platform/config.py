@@ -15,8 +15,8 @@ class Settings(BaseSettings):
 
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
 
-    # Using RabbitMQ for results too (Might use Redis later)
-    CELERY_RESULT_BACKEND: str = "rpc://"  
+    # Using Redis backend for results (supports chords and avoids database complexity)
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"  
     
     CELERY_TASK_SERIALIZER: str = "json"
     CELERY_RESULT_SERIALIZER: str = "json"
