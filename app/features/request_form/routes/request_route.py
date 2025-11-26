@@ -1,0 +1,100 @@
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.features.request_form.schemas.request_schema import (
+    RequestFormCreate,
+    RequestFormResponse,
+    RequestFormStatusResponse,
+)
+from app.features.request_form.services.request_service import RequestFormService
+from app.platform.db.session import get_db
+from app.platform.response import api_response
+from app.platform.logger import get_logger
+
+router = APIRouter(prefix="/request-form", tags=["Request Form"])
+logger = get_logger(__name__)
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def submit_request_form(
+    background_tasks: BackgroundTasks,
+    payload: RequestFormCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    service = RequestFormService(db)
+    user_email = await service.get_user_email(payload.user_id)
+    user_name = await service.get_user_name(payload.user_id)
+
+    submission = await service.create_request(
+        user_id=payload.user_id,
+        job_id=payload.job_id,
+        website=str(payload.website),
+        selected_category=payload.selected_category,
+    )
+
+    logger.info(
+        "Request form accepted",
+        extra={
+            "request_id": submission.request_id,
+            "user_id": submission.user_id,
+            "job_id": submission.job_id,
+            "website": str(payload.website),
+            "user_email": user_email,
+        },
+    )
+
+    background_tasks.add_task(service.send_notification, payload.website, user_email, user_name)
+
+    return api_response(
+        message="Request submitted successfully",
+        data={
+            "request_id": submission.request_id,
+            "user_email": user_email,
+            "website": str(payload.website),
+            "submission": RequestFormResponse.model_validate(submission),
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.get("/{request_id}")
+async def get_request_form(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    service = RequestFormService(db)
+    submission = await service.get_request(request_id)
+
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail="Request not found"
+                            )
+
+    logger.info("Request form fetched", extra={"request_id": request_id})
+    return api_response(
+        message="Request retrieved",
+        data=RequestFormResponse.model_validate(submission),
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.get("/{request_id}/status")
+async def get_request_status(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    service = RequestFormService(db)
+    submission = await service.get_request(request_id)
+
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Request not found"
+            )
+
+    logger.info("Request form status fetched", extra={"request_id": request_id, "status": submission.status})
+    return api_response(
+        message="Request status retrieved",
+        data=RequestFormStatusResponse.model_validate(submission),
+        status_code=status.HTTP_200_OK,
+    )
