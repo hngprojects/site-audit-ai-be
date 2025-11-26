@@ -29,32 +29,18 @@ def is_valid_domain(url: str) -> bool:
     return "." in hostname and not hostname.startswith(".") and not hostname.endswith(".")
 
 
-# ─────────────────────────────────────────────────────────────
-# Unified Ownership Functions (user_id priority, device_id fallback)
-# ─────────────────────────────────────────────────────────────
-
 async def create_site(
     db: AsyncSession,
     site_data: SiteCreate,
     user_id: str | None = None,
     device_id: str | None = None,
 ):
-    """
-    Create a site with flexible ownership.
-    - If user_id is provided → site belongs to user (user_id takes priority)
-    - Else if device_id is provided (from payload) → site belongs to device
-    - At least one must be present (enforced by DB constraint)
-    """
     normalized_url = normalize_url(site_data.root_url)
-    if not is_valid_domain(normalized_url):
-        raise ValueError("Invalid domain in root_url")
-
-    # Extract device_id from payload if present (extra field)
     payload_device_id = getattr(site_data, "device_id", None)
 
     new_site = Site(
         user_id=user_id,
-        device_id=device_id or payload_device_id,  # fallback to payload
+        device_id=device_id or payload_device_id,
         root_url=normalized_url,
         display_name=site_data.display_name,
         favicon_url=site_data.favicon_url,
@@ -66,10 +52,7 @@ async def create_site(
         await db.refresh(new_site)
     except IntegrityError:
         await db.rollback()
-        if user_id:
-            raise ValueError("You already have a site with this root_url")
-        else:
-            raise ValueError("A site with this root_url already exists for this device")
+        raise ValueError("You already have a site with this root_url")
     except Exception as e:
         await db.rollback()
         raise e
