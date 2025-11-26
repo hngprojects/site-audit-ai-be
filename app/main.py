@@ -15,7 +15,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-
 app = FastAPI(
     title="Site Audit AI API", description="API for website auditing and analysis", version="1.0.0"
 )

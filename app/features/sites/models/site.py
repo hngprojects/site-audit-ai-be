@@ -35,6 +35,8 @@ class Site(BaseModel):
     user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True) 
     device_id = Column(String, index=True, nullable=True)  # Can coexist with user_id
     root_url = Column(String, index=True, nullable=False)  # Multiple users can have same site in portfolios, nless mark wants us to make it unique per user
+    root_url_normalized = Column(String(2048), nullable=False, index=True)  # Normalized URL for deduplication
+    domain = Column(String(255), nullable=False)
     display_name = Column(String, nullable=True)
     favicon_url = Column(String, nullable=True)
     status = Column(Enum(SiteStatus), default=SiteStatus.active, nullable=True)
