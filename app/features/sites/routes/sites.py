@@ -22,7 +22,7 @@ router = APIRouter(prefix="/sites", tags=["Sites"])
     summary="Create a new site",
     description="Create a site for the authenticated user or anonymous device",
 )
-async def create_site(
+async def create_site_route(
     request: SiteCreate,
     owner: dict = Depends(get_owner_context),
     db: AsyncSession = Depends(get_db),
@@ -40,7 +40,7 @@ async def create_site(
         db=db,
         site_data=request,
         user_id=user_id,
-        device_id=device_id,  # Preserved even for logged-in users (history/claiming)
+        device_id=device_id,
     )
 
     return api_response(
