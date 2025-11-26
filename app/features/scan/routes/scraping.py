@@ -117,11 +117,18 @@ async def scrape_pages(
         )
             
     except Exception as e:
+        # Log the full error with traceback
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Scraping failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         # TODO: If job_id provided, mark scraping_status = 'failed'
         return api_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"Scraping failed: {str(e)}",
-            data={}
+            data={"error": str(e), "traceback": traceback.format_exc()}
         )
 
 
