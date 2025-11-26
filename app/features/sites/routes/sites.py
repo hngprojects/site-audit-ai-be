@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.sites.schemas.site import SiteCreate, SiteResponse
 from app.features.sites.services.site import (
-    create_site, 
-    get_all_sites,                 
-    get_site_by_id,                
-    soft_delete_site_by_id,        
+    create_site,
+    get_sites_for_owner,
+    get_site_by_id_for_owner,
+    soft_delete_site_by_id_for_owner,
 )
+from app.features.sites.dependencies.site import get_owner_context
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 
@@ -20,21 +20,29 @@ router = APIRouter(prefix="/sites", tags=["Sites"])
     response_model=dict,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new site",
-    description="Add a new site",
+    description="Create a site for the authenticated user or anonymous device",
 )
 async def create_site(
-    request: SiteCreate, db: AsyncSession = Depends(get_db)
+    request: SiteCreate,
+    owner: dict = Depends(get_owner_context),
+    db: AsyncSession = Depends(get_db),
 ):
-    try:
-        new_site = await create_site(db, request)
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(ve))
-    except IntegrityError:
-        await db.rollback()
+    user_id = owner["user_id"]
+    device_id = getattr(request, "device_id", None)
+
+    if not user_id and not device_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Site with this root_url already exists",
+            detail="Authentication or 'device_id' in payload is required",
         )
+
+    new_site = await create_site(
+        db=db,
+        site_data=request,
+        user_id=user_id,
+        device_id=device_id,  # Preserved even for logged-in users (history/claiming)
+    )
+
     return api_response(
         data=SiteResponse.from_orm(new_site),
         message="Site created successfully",
@@ -47,12 +55,23 @@ async def create_site(
     response_model=dict,
     status_code=status.HTTP_200_OK,
     summary="Get site details",
-    description="Retrieve a specific site",
+    description="Retrieve a specific site belonging to the current user or device",
 )
 async def get_site(
-    site_id: str, db: AsyncSession = Depends(get_db)
+    site_id: str,
+    owner: dict = Depends(get_owner_context),
+    db: AsyncSession = Depends(get_db),
 ):
-    site = await get_site_by_id(db, site_id)
+    user_id = owner["user_id"]
+    device_id = getattr(request, "device_id", None) if not user_id else None
+
+    site = await get_site_by_id_for_owner(
+        db=db,
+        site_id=site_id,
+        user_id=user_id,
+        device_id=device_id,
+    )
+
     return api_response(
         data=SiteResponse.from_orm(site),
         message="Site retrieved successfully",
@@ -64,16 +83,22 @@ async def get_site(
     "/{site_id}",
     response_model=dict,
     status_code=status.HTTP_200_OK,
-    summary="Soft deletes an existing site",
-    description="Soft deletes a site's details in order to preserve history",
+    summary="Soft delete an existing site",
+    description="Soft delete a site belonging to the current user or device",
 )
 async def soft_delete_site(
     site_id: str,
+    owner: dict = Depends(get_owner_context),
     db: AsyncSession = Depends(get_db),
 ):
-    updated_site = await soft_delete_site_by_id(
+    user_id = owner["user_id"]
+    device_id = getattr(request, "device_id", None) if not user_id else None
+
+    updated_site = await soft_delete_site_by_id_for_owner(
         db=db,
         site_id=site_id,
+        user_id=user_id,
+        device_id=device_id,
     )
 
     return api_response(
@@ -88,10 +113,27 @@ async def soft_delete_site(
     response_model=dict,
     status_code=status.HTTP_200_OK,
     summary="Get all sites",
-    description="Retrieve all non-deleted sites",
+    description="Retrieve all non-deleted sites belonging to the current user or device",
 )
-async def get_all_sites(db: AsyncSession = Depends(get_db)):
-    sites = await get_all_sites(db)
+async def get_all_sites(
+    owner: dict = Depends(get_owner_context),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = owner["user_id"]
+    device_id = getattr(request, "device_id", None) if not user_id else None
+
+    if not user_id and not device_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication or 'device_id' in payload is required",
+        )
+
+    sites = await get_sites_for_owner(
+        db=db,
+        user_id=user_id,
+        device_id=device_id,
+    )
+
     return api_response(
         data=[SiteResponse.from_orm(site) for site in sites],
         message="Sites retrieved successfully",
