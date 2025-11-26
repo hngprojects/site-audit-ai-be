@@ -7,6 +7,6 @@ class Waitlist(BaseModel):
     __tablename__ = "waitlist"
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
-    referral_code = Column(String, unique=True, nullable=False, index=True)
-    referred_by = Column(String, ForeignKey("waitlist.referral_code"), nullable=True)
-    referral_count = Column(Integer, default=0)
+    # referral_code = Column(String, unique=True, nullable=False, index=True)
+    # referred_by = Column(String, ForeignKey("waitlist.referral_code"), nullable=True)
+    # referral_count = Column(Integer, default=0)
