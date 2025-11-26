@@ -14,6 +14,7 @@ from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
 
 from app.features.support.routes.email_support import router as support_router
+from app.features.support.routes.contact_us import router as contact_router
 
 api_router = APIRouter()
 
@@ -32,4 +33,4 @@ api_router.include_router(scan_selection_router)
 api_router.include_router(scan_scraping_router)
 api_router.include_router(scan_analysis_router)
 api_router.include_router(scan_pages_router)
-
+api_router.include_router(contact_router)
