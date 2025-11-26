@@ -12,6 +12,8 @@ from app.features.scan.routes.selection import router as scan_selection_router
 from app.features.scan.routes.scraping import router as scan_scraping_router
 from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
+from app.features.request_form.routes.request_route import router as request_form_router
+
 
 from app.features.support.routes.email_support import router as support_router
 
@@ -23,6 +25,8 @@ api_router.include_router(users_router)
 api_router.include_router(oauth_router)
 api_router.include_router(support_router)
 api_router.include_router(sites_router)
+api_router.include_router(request_form_router)
+
 
 
 # Register scan feature routes

@@ -1,0 +1,11 @@
+{% extends "base_email.html" %} 
+{% block title %}New Ticket Notification{% endblock %} 
+
+{% block content %}
+
+<h3>Hello {{username}},</h3>
+<p>Your request for {{website}} has been received and the expected timeline is 2 days.</p>
+
+
+<p>Thank you,<br />The Sitelytics Team</p>
+{% endblock %}
