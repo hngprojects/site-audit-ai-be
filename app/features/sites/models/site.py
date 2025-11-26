@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Enum, DateTime, UniqueConstraint, Index, Boolean
+from sqlalchemy import Column, String, Integer, ForeignKey, Enum, DateTime, UniqueConstraint, Index, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
 from app.platform.db.base import BaseModel
 import enum
@@ -17,16 +17,23 @@ class SiteStatus(enum.Enum):
 
 class Site(BaseModel):
     """
-    Unified site model for both authenticated portfolio management and global scan cache.
-    
-    Usage:
-    - Auth users: user_id is set, they can manage this site in their portfolio
-    - Unauth scans: user_id is NULL, site exists only as scan cache entry
-    - Claiming: When unauth user registers, their scans can be "claimed" by setting user_id
+    Site model with flexible ownership — user_id takes priority over device_id.
+
+    Ownership resolution (in order):
+    1. If user_id is set → site belongs to that user (authenticated ownership)
+    2. Else if device_id is set → site belongs to that device (anonymous ownership)
+    3. If both NULL → invalid (blocked by constraint)
+
+    This enables:
+    - Anonymous users create sites with device_id
+    - When they sign up → we set user_id (device_id stays as history)
+    - All future operations use user_id
+    - No data loss during "claim" flow
     """
     __tablename__ = "sites"
 
     user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True) 
+    device_id = Column(String, index=True, nullable=True)  # Can coexist with user_id
     root_url = Column(String, index=True, nullable=False)  # Multiple users can have same site in portfolios, nless mark wants us to make it unique per user
     display_name = Column(String, nullable=True)
     favicon_url = Column(String, nullable=True)
@@ -42,8 +49,10 @@ class Site(BaseModel):
     user = relationship("User", back_populates="sites")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "root_url", name="uq_user_site_root_url"),
+        UniqueConstraint("user_id", "root_url", name="uq_user_site_root_url"),  # One site per user (if they have one)
+        UniqueConstraint("device_id", "root_url", name="uq_device_site_root_url"),  # One site per device (only matters when no user_id)
         
+        CheckConstraint("user_id IS NOT NULL OR device_id IS NOT NULL", name="ck_site_has_owner"),  # At least one owner must exist
+
         Index("ix_sites_root_url_last_scanned", "root_url", "last_scanned_at"),
-        Index("ix_sites_cache_entry", "root_url", postgresql_where="user_id IS NULL", unique=True),
     )
