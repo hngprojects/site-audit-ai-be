@@ -102,6 +102,32 @@ def discover_pages(
         raise
 
 
+def _update_page_scrape_data(page_id: str, html_content: str, page_title: Optional[str], content_length: int):
+    """Update page record with scraped data."""
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    import hashlib
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            page.page_title = page_title
+            page.content_length_bytes = content_length
+            page.http_status = 200
+            
+            # Generate content hash for caching
+            if html_content:
+                content_hash = hashlib.sha256(html_content.encode('utf-8')).hexdigest()
+                page.content_hash_current = content_hash
+            
+            db.commit()
+    finally:
+        db.close()
+
+
 def _save_discovered_pages(job_id: str, pages: List[str]):
     """Save discovered pages to database."""
     # Import all related models to ensure SQLAlchemy mappers are configured
@@ -214,6 +240,27 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
         db.close()
 
 
+def _get_page_ids_for_urls(job_id: str, urls: List[str]) -> Dict[str, str]:
+    """Get page IDs for given URLs from database."""
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        url_normalized = {url.rstrip('/') for url in urls}
+        pages = db.query(ScanPage).filter(
+            ScanPage.scan_job_id == job_id,
+            ScanPage.page_url_normalized.in_(url_normalized)
+        ).all()
+        
+        # Map normalized URL to page ID
+        return {page.page_url: str(page.id) for page in pages}
+    finally:
+        db.close()
+
+
 # =============================================================================
 # Phase 3: Scraping (per-page)
 # =============================================================================
@@ -231,9 +278,8 @@ def scrape_page(
     page_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Scrape HTML content for a single page.
-    
-    This is a placeholder - integrate the scraping service here.
+    Scrape HTML content for a single page using ScrapingService.
+    Returns serializable data that can be passed to extract_data task.
     
     Args:
         job_id: The scan job ID
@@ -241,23 +287,41 @@ def scrape_page(
         page_id: Optional page record ID
         
     Returns:
-        Dict with scraped content and metadata
+        Dict with scraped HTML and metadata (fully serializable)
     """
+    from app.features.scan.services.scraping.scraping_service import ScrapingService
+    
     logger.info(f"[{job_id}] Scraping page: {page_url}")
     
     try:
-        # TODO: Team integrates their scraping service here
-        # For now, return placeholder
-        html_content = f"<html><body>Placeholder for {page_url}</body></html>"
+        # Use improved scrape_page method that returns serializable data
+        scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
         
-        return {
+        if not scrape_result["success"]:
+            logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
+            raise Exception(scrape_result.get("error", "Unknown scraping error"))
+        
+        # Store basic scraping info in database
+        if page_id and scrape_result["html"]:
+            _update_page_scrape_data(
+                page_id,
+                scrape_result["html"],
+                scrape_result["page_title"],
+                scrape_result["content_length"]
+            )
+        
+        result = {
             "job_id": job_id,
             "page_id": page_id,
             "page_url": page_url,
-            "html": html_content,
-            "http_status": 200,
-            "content_length": len(html_content)
+            "html": scrape_result["html"],
+            "page_title": scrape_result["page_title"],
+            "content_length": scrape_result["content_length"],
+            "current_url": scrape_result.get("current_url", page_url)
         }
+        
+        logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
+        return result
         
     except Exception as e:
         logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
@@ -279,38 +343,43 @@ def extract_data(
     scrape_result: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Extract structured data from scraped HTML.
-    
-    This is a placeholder - integrate extraction service here.
+    Extract structured data from scraped HTML using ExtractorService.
     
     Args:
-        scrape_result: Output from scrape_page task
+        scrape_result: Output from scrape_page task containing HTML
         
     Returns:
         Dict with extracted data
     """
+    from app.features.scan.services.extraction.extractor_service import ExtractorService
+    
     job_id = scrape_result["job_id"]
     page_url = scrape_result["page_url"]
+    page_id = scrape_result.get("page_id")
+    html = scrape_result.get("html")
     
     logger.info(f"[{job_id}] Extracting data from: {page_url}")
     
     try:
-        # TODO: extraction service here
-        # For now, return placeholder
-        extracted = {
-            "title": "Placeholder Title",
-            "meta_description": "Placeholder description",
-            "h1_tags": [],
-            "images": [],
-            "links": []
-        }
+        if not html:
+            raise ValueError("No HTML content provided in scrape_result")
         
-        return {
+        # Extract all data using ExtractorService.extract_from_html
+        extracted = ExtractorService.extract_from_html(html, page_url)
+        
+        # Update database with extracted data
+        if page_id:
+            _update_page_extracted_data(page_id, extracted)
+        
+        result = {
             "job_id": job_id,
-            "page_id": scrape_result.get("page_id"),
+            "page_id": page_id,
             "page_url": page_url,
             "extracted_data": extracted
         }
+        
+        logger.info(f"[{job_id}] Successfully extracted data from {page_url}")
+        return result
         
     except Exception as e:
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
@@ -375,6 +444,44 @@ def analyze_page(
     except Exception as e:
         logger.error(f"[{job_id}] Analysis failed for {page_url}: {e}")
         raise
+
+
+def _update_page_extracted_data(page_id: str, extracted: Dict):
+    """Update page record with extracted data for later analysis."""
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            # Update page title if extracted from metadata
+            metadata = extracted.get("metadata", {})
+            if metadata.get("title"):
+                page.page_title = metadata["title"]
+            
+            # Count issues from accessibility and metadata
+            accessibility = extracted.get("accessibility", {})
+            metadata_issues = len(metadata.get("issues", []))
+            
+            # Count accessibility issues
+            accessibility_issues = sum([
+                len(accessibility.get("images_missing_alt", [])),
+                len(accessibility.get("inputs_missing_label", [])),
+                len(accessibility.get("buttons_missing_label", [])),
+                len(accessibility.get("links_missing_label", [])),
+                len(accessibility.get("empty_headings", []))
+            ])
+            
+            # Classify issues
+            page.critical_issues_count = metadata_issues  # Metadata issues are critical
+            page.warning_issues_count = accessibility_issues  # Accessibility issues are warnings
+            
+            db.commit()
+    finally:
+        db.close()
 
 
 def _update_page_scores(page_id: Optional[str], analysis: Dict):
@@ -566,12 +673,16 @@ def process_selected_pages(
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.scraping)
     
+    # Get page IDs from database for tracking
+    page_id_map = _get_page_ids_for_urls(job_id, selected_pages)
+    
     # Create parallel tasks for each page
     page_tasks = []
     for page_url in selected_pages:
+        page_id = page_id_map.get(page_url)
         # Chain: scrape -> extract -> analyze for each page
         page_workflow = chain(
-            scrape_page.s(job_id, page_url),
+            scrape_page.s(job_id, page_url, page_id),
             extract_data.s(),
             analyze_page.s()
         )
