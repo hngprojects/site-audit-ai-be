@@ -21,7 +21,7 @@ from app.features.auth.services.auth_service import AuthService
 from app.features.auth.services.email_service import (
     send_account_activation,
     send_password_reset,
-    send_verification_otp,
+    
 )
 from app.features.auth.utils.security import decode_access_token, generate_otp
 from app.platform.db.session import get_db
@@ -50,19 +50,17 @@ async def signup(
     Sends verification email in the background.
     """
     auth_service = AuthService(db)
-    token_response, otp = await auth_service.register_user(request)
+    token_response, _ = await auth_service.register_user(request)
 
     logger.info(f"New signup: {request.email}")
 
     user_name = getattr(request, "first_name", request.username)
 
-    background_tasks.add_task(
-        send_verification_otp, to_email=request.email, first_name=request.username, otp=otp
-    )
+    
 
     return api_response(
         data=token_response,
-        message="User registered successfully. Please check your email for the OTP code to verify your account.",
+        message="User registered successfully. User registered successfully. You can now log in.",
         status_code=status.HTTP_201_CREATED,
     )
 

@@ -16,7 +16,8 @@ async def join_waitlist(
 ):
     try:
         entry = await add_to_waitlist(db, waitlist_in.name, waitlist_in.email)
-        background_tasks.add_task(send_thank_you_email, waitlist_in.email, waitlist_in.name)
+        background_tasks.add_task(
+            send_thank_you_email, waitlist_in.email, waitlist_in.name)
 
         return api_response(
             data=WaitlistOut.model_validate(entry),
