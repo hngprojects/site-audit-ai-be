@@ -186,7 +186,6 @@ async def get_page_extracted_data(
                 "seo": page.score_seo,
                 "accessibility": page.score_accessibility,
                 "performance": page.score_performance,
-                "design": page.score_design
             },
             "issues": {
                 "critical_count": page.critical_issues_count,

@@ -1,6 +1,7 @@
 import os
 import logging
 from typing import Optional, Dict, Any
+from copy import deepcopy
 from datetime import datetime
 from pydantic import BaseModel, Field
 import google.generativeai as genai
@@ -12,31 +13,31 @@ logger = logging.getLogger(__name__)
 
 GOOGLE_GEMINI_API_KEY = settings.GOOGLE_GEMINI_API_KEY
 
+
 class Problem(BaseModel):
     icon: str = Field(description="warning or alert icon type")
     title: str = Field(description="Short problem title")
     description: str = Field(description="Detailed problem description")
 
+
 class PageAnalysisResult(BaseModel):
     url: str = Field(description="URL of the analyzed page")
-    overall_score: int = Field(description="Overall page score out of 100")
-    scan_date: str = Field(description="Timestamp of when the scan was performed")
+    scan_date: str = Field(
+        description="Timestamp of when the scan was performed")
 
-    ux_score: int = Field(description="UX score out of 100")
-    ux_title: str = Field(description="UX section title (e.g., 'Usability')")
-    ux_impact_message: str = Field(
-        description="How UX issues affect business (2-3 sentences)")
-    ux_impact_score: int = Field(description="UX impact score")
-    ux_business_benefits: list[str] = Field(
-        description="3-4 bullet points of business benefits of fixing UX issues")
-    ux_problems: list[Problem] = Field(
-        description="List of specific UX problems found")
+    usability_score: int = Field(description="usability score out of 100")
+    usability_title: str = Field(description="usability section title (e.g., 'Usability')")
+    usability_impact_message: str = Field(
+        description="How usability issues affect business (2-3 sentences)")
+    usability_business_benefits: list[str] = Field(
+        description="3-4 bullet points of business benefits of fixing usability issues")
+    usability_problems: list[Problem] = Field(
+        description="List of specific usability problems found")
 
     performance_score: int = Field(description="Performance score out of 100")
     performance_title: str = Field(description="Performance section title")
     performance_impact_message: str = Field(
         description="How performance issues affect business (2-3 sentences)")
-    performance_impact_score: int = Field(description="Performance impact score")
     performance_business_benefits: list[str] = Field(
         description="3-4 bullet points of business benefits of fixing performance issues")
     performance_problems: list[Problem] = Field(
@@ -46,7 +47,6 @@ class PageAnalysisResult(BaseModel):
     seo_title: str = Field(description="SEO section title")
     seo_impact_message: str = Field(
         description="How SEO issues affect business (2-3 sentences)")
-    seo_impact_score: int = Field(description="SEO impact score")
     seo_business_benefits: list[str] = Field(
         description="3-4 bullet points of business benefits of fixing SEO issues")
     seo_problems: list[Problem] = Field(
@@ -103,8 +103,12 @@ class PageAnalyzerService:
                 prepared_data)
 
             raw = PageAnalyzerService._call_llm(analysis_prompt)
-            result = PageAnalyzerService._clean_up_llm_response(raw.model_dump())
-            
+            initial_result = PageAnalyzerService._clean_up_llm_response(
+                raw.model_dump())
+
+            result = PageAnalyzerService._merge_llm_with_formula(
+                initial_result, prepared_data)
+
             logger.info(
                 f"Page analysis complete: {result.get('overall_score')}/100 for {result.get('url')}")
             return result
@@ -196,16 +200,101 @@ class PageAnalyzerService:
             raise
 
     @staticmethod
+    def _calculate_usability_score(prepared_data: dict) -> float:
+        acc_issues = prepared_data['accessibility_issues']
+        images_count = max(prepared_data['images_count'], 1)
+        total_inputs = max(len(acc_issues['inputs_missing_label']) + 1, 1)
+        total_buttons = max(len(acc_issues['buttons_missing_label']) + 1, 1)
+        total_links = max(len(acc_issues['links_missing_label']) + 1, 1)
+        empty_headings = max(len(acc_issues['empty_headings']), 1)
+
+        img_pct = len(acc_issues['images_missing_alt']) / images_count
+        inputs_pct = len(acc_issues['inputs_missing_label']) / total_inputs
+        buttons_pct = len(acc_issues['buttons_missing_label']) / total_buttons
+        links_pct = len(acc_issues['links_missing_label']) / total_links
+        headings_pct = len(acc_issues['empty_headings']) / empty_headings
+
+        weighted_pct = 0.4 * img_pct + 0.15 * inputs_pct + 0.15 * buttons_pct + 0.15 * links_pct + 0.15 * headings_pct
+
+        usability_score = max(0, 100 * (1 - weighted_pct))
+        return round(usability_score)
+
+    @staticmethod
+    def _calculate_formula_scores(prepared_data: Dict[str, Any]) -> Dict[str, float]:
+        seo_issues = prepared_data['seo_issues']
+
+        
+        usability_score = PageAnalyzerService._calculate_usability_score(prepared_data)
+
+        performance_score = max(
+            0,
+            100 - (
+                prepared_data['images_count'] * 0.5 +
+                prepared_data['headings_count'] * 0.5 +
+                prepared_data['word_count'] / 5000
+            )
+        )
+
+        seo_score = max(
+            0,
+            100 - (
+                seo_issues.get('total_issues', 0) * 2 +
+                (0 if seo_issues.get('has_title') else 5) +
+                (0 if seo_issues.get('has_description') else 5) +
+                (0 if seo_issues.get('canonical_url') else 2)
+            )
+        )
+
+        overall_score = round((usability_score + performance_score + seo_score) / 3)
+
+        return {
+            "usability_score_formula": usability_score,
+            "performance_score_formula": performance_score,
+            "seo_score_formula": seo_score,
+            "overall_score_formula": overall_score
+        }
+
+    @staticmethod
+    def _merge_llm_with_formula(llm_response: dict, prepared_data: dict) -> dict:
+        """
+        Merge Gemini LLM response with formula-based scores to get final averaged scores.
+
+        Args:
+            llm_response (dict): Response from Gemini LLM
+            prepared_data (dict): Prepared page data to calculate formula scores
+
+        Returns:
+            dict: Updated LLM response with averaged scores
+        """
+
+        merged_response = deepcopy(llm_response)
+
+        formula_scores = PageAnalyzerService._calculate_formula_scores(
+            prepared_data)
+
+        for section in ["usability", "performance", "seo"]:
+            llm_score = merged_response[section]["score"]
+            formula_score = formula_scores[f"{section}_score_formula"]
+            merged_response[section]["score"] = round(
+                (llm_score + formula_score) / 2)
+
+        llm_overall = merged_response.get("overall_score", 0)
+        formula_overall = formula_scores["overall_score_formula"]
+        merged_response["overall_score"] = round(
+            (llm_overall + formula_overall) / 2)
+
+        return merged_response
+
+    @staticmethod
     def _build_analysis_prompt(prepared_data: Dict[str, Any]) -> str:
         """Build comprehensive analysis prompt from prepared data."""
         return f"""
-    You are an expert web auditor analyzing page performance across UX, Performance, and SEO.
+    You are an expert web auditor analyzing page performance across usability, Performance, and SEO.
     Format your response ONLY as valid JSON matching the specified schema.
 
     Analyze this page data:
 
     URL: {prepared_data['url']}
-    Scan Date: {prepared_data['scan_date']}
 
     CONTENT METRICS:
     - Word Count: {prepared_data['word_count']}
@@ -243,18 +332,17 @@ class PageAnalyzerService:
     KEYWORD ANALYSIS:
     {prepared_data['keyword_analysis']}
 
-    For each section (UX, Performance, SEO), provide:
+    For each section (usability/UX, Performance, SEO), provide:
     1. A score (0-100)
     2. A title (e.g., "Usability", "Performance", "SEO")
     3. An impact_message explaining business consequences (2-3 sentences)
-    4. An impact_score (0-100) for that specific metric
-    5. business_benefits: 3-4 bullet points of what fixing issues would do
-    6. problems: specific issues found with:
+    4. business_benefits: 3-4 bullet points of what fixing issues would do
+    5. problems: specific issues found with:
     - icon: "warning" or "alert"
     - title: problem name
     - description: specific issue details
 
-    Use the accessibility_issues, text_content metrics, and SEO metadata to inform UX and SEO scores.
+    Use the accessibility_issues, text_content metrics, and SEO metadata to inform usability and SEO scores.
     Make scores realistic and actionable. Include real problems found.
     Calculate overall_score as average of three section scores.
     """
@@ -273,22 +361,20 @@ class PageAnalyzerService:
                 prompt,
                 generation_config=genai.types.GenerationConfig(
                     response_mime_type="application/json",
-                    response_schema=PageAnalysisResult
+                    response_schema=PageAnalysisResult,
+                    temperature=0,
+                    top_p=1,
+                    top_k=1,
                 )
             )
 
-            print(f"Gemini Response: {response.text}")
-            
-            # Try to parse JSON - handle malformed responses
             try:
                 result_data = json.loads(response.text)
             except json.JSONDecodeError as json_err:
                 logger.error(f"JSON parse error: {json_err}")
-                # Try to extract valid JSON by cleaning the response
                 cleaned_text = response.text.strip()
-                # If it starts with { and ends with }, try to find the last valid }
+
                 if cleaned_text.startswith('{'):
-                    # Find the last occurrence of } and truncate there
                     last_brace = cleaned_text.rfind('}')
                     if last_brace > 0:
                         cleaned_text = cleaned_text[:last_brace + 1]
@@ -297,15 +383,13 @@ class PageAnalyzerService:
                         raise
                 else:
                     raise
-            
-            # Pre-process: ensure all Problem objects have description field
-            for field_name in ['ux_problems', 'performance_problems', 'seo_problems']:
+
+            for field_name in ['usability_problems', 'performance_problems', 'seo_problems']:
                 if field_name in result_data and isinstance(result_data[field_name], list):
                     for problem in result_data[field_name]:
                         if isinstance(problem, dict) and 'description' not in problem:
-                            # Use title as fallback description if missing
                             problem['description'] = problem.get('title', '')
-            
+
             result = PageAnalysisResult(**result_data)
 
             logger.info(f"Gemini API analysis completed for {result.url}")
@@ -314,7 +398,7 @@ class PageAnalyzerService:
         except Exception as e:
             logger.error(f"Gemini API call failed: {str(e)}")
             raise
-    
+
     @staticmethod
     def _clean_up_llm_response(raw: dict) -> dict:
         """
@@ -324,7 +408,7 @@ class PageAnalyzerService:
             url: str,
             overall_score: int,
             scan_date: str,
-            ux: AnalysisSection,
+            usability: AnalysisSection,
             performance: AnalysisSection,
             seo: AnalysisSection
         }
@@ -335,20 +419,18 @@ class PageAnalyzerService:
                 "score": raw[f"{prefix}_score"],
                 "title": raw[f"{prefix}_title"],
                 "impact_message": raw[f"{prefix}_impact_message"],
-                "impact_score": raw[f"{prefix}_impact_score"],
                 "business_benefits": raw[f"{prefix}_business_benefits"],
                 "problems": raw[f"{prefix}_problems"],
             }
-            
-        print(f'raw: {raw}')
 
         formatted = {
             "url": raw["url"],
-            "overall_score": raw.get("overall_score", ''),
             "scan_date": raw["scan_date"],
-            "ux": build_section("ux"),
+            "usability": build_section("usability"),
             "performance": build_section("performance"),
             "seo": build_section("seo"),
         }
+        
+        formatted["overall_score"] = round((formatted['usability']['score'] + formatted['performance']['score'] + formatted['seo']['score']) / 3)
 
         return formatted

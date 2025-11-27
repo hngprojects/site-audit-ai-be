@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import hashlib
 import logging
 
+from app.features.scan.services.utils.aggregator import convert_scan_results
 from app.features.scan.schemas.scan import (
     ScanStartRequest, 
     ScanStartResponse,
@@ -394,7 +395,6 @@ async def get_scan_results(
                 "score_seo": page.score_seo,
                 "score_accessibility": page.score_accessibility,
                 "score_performance": page.score_performance,
-                "score_design": page.score_design,
                 "critical_issues": page.critical_issues_count,
                 "warnings": page.warning_issues_count,
                 "analysis_details": page.analysis_details  # Full LLM analysis
@@ -402,7 +402,28 @@ async def get_scan_results(
             for page in all_pages if page.is_selected_by_llm
         ]
         
+        
         return api_response(
+            # Format scan result to frontend usable version
+            # data=convert_scan_results(
+            #     {
+            #     "job_id": job_id,
+            #     "status": job.status,
+            #     "results": {
+            #         "score_overall": job.score_overall or 0,
+            #         "score_seo": job.score_seo or 0,
+            #         "score_accessibility": job.score_accessibility or 0,
+            #         "score_performance": job.score_performance or 0,
+            #         "total_issues": job.total_issues,
+            #         "critical_issues": job.critical_issues_count,
+            #         "warnings": job.warning_issues_count,
+            #         "pages_discovered": job.pages_discovered,
+            #         "pages_selected": job.pages_selected,
+            #         "pages_analyzed": job.pages_llm_analyzed,
+            #         "selected_pages": selected_pages
+            #     }
+            # }
+            # )
             data={
                 "job_id": job_id,
                 "status": job.status,
@@ -411,7 +432,6 @@ async def get_scan_results(
                     "score_seo": job.score_seo or 0,
                     "score_accessibility": job.score_accessibility or 0,
                     "score_performance": job.score_performance or 0,
-                    "score_design": job.score_design or 0,
                     "total_issues": job.total_issues,
                     "critical_issues": job.critical_issues_count,
                     "warnings": job.warning_issues_count,
