@@ -59,6 +59,44 @@ class NotificationService:
 
         return notification
 
+    async def get_user_notifications(
+        self,
+        user_id: str,
+        skip: int = 0,
+        limit: int = 50,
+        unread_only: bool = False,
+    ) -> tuple[list[Notification], int, int]:
+        """
+        Get user notifications with pagination.
+        Returns: (notifications, total_count, unread_count)
+        """
+        # Build query
+        query = select(Notification).where(Notification.user_id == user_id)
+
+        if unread_only:
+            query = query.where(Notification.is_read.is_(False))
+
+        # Get total count
+        count_query = (
+            select(func.count()).select_from(Notification).where(Notification.user_id == user_id)
+        )
+        total_result = await self.db.execute(count_query)
+        total_count = total_result.scalar_one()
+
+        # Get unread count
+        unread_query = (
+            select(func.count())
+            .select_from(Notification)
+            .where(and_(Notification.user_id == user_id, Notification.is_read.is_(False)))
+        )
+        unread_result = await self.db.execute(unread_query)
+        unread_count = unread_result.scalar_one()
+
+        query = query.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
+        result = await self.db.execute(query)
+        notifications = result.scalars().all()
+
+        return list(notifications), total_count, unread_count
     async def get_user_settings(self, user_id: str) -> NotificationSettings:
         """
         Get user notification settings. Creates default settings if they don't exist.
