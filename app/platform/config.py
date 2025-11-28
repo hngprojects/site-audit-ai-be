@@ -1,6 +1,11 @@
+import os
+from dotenv import load_dotenv
+
 from pydantic_settings import BaseSettings
 from typing import Literal, Optional
 from pathlib import Path
+
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -31,11 +36,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
 
     # ── Apple OAuth Configuration ───────────────────────
-    APPLE_CLIENT_ID: Optional[str] = None
-    APPLE_TEAM_ID: Optional[str] = None
-    APPLE_KEY_ID: Optional[str] = None
-    APPLE_PRIVATE_KEY_PATH: Optional[str] = None
-    APPLE_REDIRECT_URI: Optional[str] = None
+    APPLE_CLIENT_ID: Optional[str] = os.getenv("APPLE_CLIENT_ID", None)
+    APPLE_TEAM_ID: Optional[str] = os.getenv("APPLE_TEAM_ID", None)
+    APPLE_KEY_ID: Optional[str] = os.getenv("APPLE_KEY_ID", None)
+    APPLE_PRIVATE_KEY_PATH: Optional[str] = os.getenv("APPLE_PRIVATE_KEY_PATH", None)
+    APPLE_REDIRECT_URI: Optional[str] = os.getenv("APPLE_REDIRECT_URI", None)
 
 
     class Config:
