@@ -48,10 +48,50 @@ class ScanStatusResponse(BaseModel):
 
 
 class ScanResultsResponse(BaseModel):
-    """Response with final scan results."""
+    """Response with final scan results including issues."""
     job_id: str
     status: str
-    results: Dict[str, Any]
+    url: Optional[str] = None
+    overall_score: Optional[int] = None
+    score_breakdown: Optional[Dict[str, int]] = None
+    total_issues: int = 0
+    critical_issues: int = 0
+    warning_issues: int = 0
+    info_issues: int = 0
+    scanned_at: Optional[str] = None
+    scan_duration: Optional[int] = None
+    pages_analyzed: int = 0
+    issues: List[Dict[str, Any]] = []  # List of IssueSummary objects
+    links: Optional[Dict[str, str]] = None  # HATEOAS links
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "job_id": "019abed1-fdae-7660-a520-42b36b26ebd8",
+                "status": "completed",
+                "url": "https://example.com",
+                "overall_score": 36,
+                "score_breakdown": {
+                    "seo": 32,
+                    "accessibility": 26,
+                    "performance": 64,
+                    "design": 26
+                },
+                "total_issues": 14,
+                "critical_issues": 3,
+                "warning_issues": 8,
+                "info_issues": 3,
+                "scanned_at": "2025-11-26T06:24:55Z",
+                "scan_duration": 12,
+                "pages_analyzed": 7,
+                "issues": [],
+                "links": {
+                    "self": "/api/v1/scan/019abed1-.../results",
+                    "status": "/api/v1/scan/019abed1-.../status",
+                    "issues": "/api/v1/scan/019abed1-.../issues"
+                }
+            }
+        }
 
 class ScanHistoryItem(BaseModel):
     """Schema for a single item in the user's scan history."""
