@@ -532,6 +532,144 @@ def _map_icon_to_severity(icon: str) -> str:
         return "low"
 
 
+    return severity
+
+
+def _generate_business_impact(category: "IssueCategory", severity: str, title: str) -> str:
+    """
+    Generate a business impact message based on issue category and severity.
+    
+    Args:
+        category: Issue category enum
+        severity: Severity level string
+        title: Issue title
+        
+    Returns:
+        Business impact description
+    """
+    impact_templates = {
+        "seo": {
+            "critical": "This critical SEO issue can significantly reduce search engine visibility, potentially decreasing organic traffic by 20-40%.",
+            "high": "This SEO issue may reduce search rankings and click-through rates from search results.",
+            "medium": "This SEO issue could moderately impact search engine optimization efforts.",
+            "low": "Minor SEO improvement opportunity that could enhance search visibility.",
+            "info": "SEO optimization suggestion for better search engine performance."
+        },
+        "accessibility": {
+            "critical": "This accessibility barrier prevents users with disabilities from accessing content, violating WCAG guidelines and potentially exposing legal risks.",
+            "high": "This accessibility issue creates significant barriers for users with disabilities and may violate accessibility standards.",
+            "medium": "This accessibility issue affects user experience for people with disabilities.",
+            "low": "Minor accessibility improvement that enhances inclusivity.",
+            "info": "Accessibility enhancement suggestion for better user experience."
+        },
+        "performance": {
+            "critical": "This performance issue severely impacts user experience, potentially increasing bounce rates by 30-50% and reducing conversions.",
+            "high": "This performance issue negatively affects page load times and user engagement.",
+            "medium": "This performance issue may cause slower page loads and reduced user satisfaction.",
+            "low": "Minor performance optimization opportunity.",
+            "info": "Performance enhancement suggestion for faster load times."
+        },
+        "design": {
+            "critical": "This design issue severely impacts user experience and brand perception, potentially reducing user engagement significantly.",
+            "high": "This design issue affects usability and may confuse or frustrate users.",
+            "medium": "This design issue could impact user experience and interface clarity.",
+            "low": "Minor design improvement for better user interface.",
+            "info": "Design enhancement suggestion for improved aesthetics."
+        }
+    }
+    
+    category_key = category.value if hasattr(category, 'value') else str(category)
+    return impact_templates.get(category_key, {}).get(severity, "This issue may impact website quality and user experience.")
+
+
+def _get_issue_resources(category: "IssueCategory", title: str) -> list:
+    """
+    Get relevant documentation resources based on issue category and title.
+    
+    Args:
+        category: Issue category enum
+        title: Issue title
+        
+    Returns:
+        List of resource dictionaries with title and url
+    """
+    category_key = category.value if hasattr(category, 'value') else str(category)
+    title_lower = title.lower()
+    
+    resources = []
+    
+    # SEO resources
+    if category_key == "seo":
+        if "title" in title_lower:
+            resources.append({
+                "title": "HTML Title Element - MDN",
+                "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/title"
+            })
+        if "meta" in title_lower or "description" in title_lower:
+            resources.append({
+                "title": "Meta Tags for SEO - Google",
+                "url": "https://developers.google.com/search/docs/appearance/snippet"
+            })
+        if "heading" in title_lower or "h1" in title_lower:
+            resources.append({
+                "title": "Heading Elements - MDN",
+                "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/Heading_Elements"
+            })
+        # Default SEO resource
+        if not resources:
+            resources.append({
+                "title": "SEO Starter Guide - Google",
+                "url": "https://developers.google.com/search/docs/fundamentals/seo-starter-guide"
+            })
+    
+    # Accessibility resources
+    elif category_key == "accessibility":
+        if "alt" in title_lower or "image" in title_lower:
+            resources.append({
+                "title": "Alternative Text - WebAIM",
+                "url": "https://webaim.org/techniques/alttext/"
+            })
+        if "aria" in title_lower or "label" in title_lower:
+            resources.append({
+                "title": "ARIA Labels - MDN",
+                "url": "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Attributes/aria-label"
+            })
+        # Default accessibility resource
+        if not resources:
+            resources.append({
+                "title": "WCAG Guidelines",
+                "url": "https://www.w3.org/WAI/WCAG21/quickref/"
+            })
+    
+    # Performance resources
+    elif category_key == "performance":
+        if "image" in title_lower or "optimize" in title_lower:
+            resources.append({
+                "title": "Image Optimization - web.dev",
+                "url": "https://web.dev/fast/#optimize-your-images"
+            })
+        if "cache" in title_lower:
+            resources.append({
+                "title": "HTTP Caching - MDN",
+                "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching"
+            })
+        # Default performance resource
+        if not resources:
+            resources.append({
+                "title": "Web Performance - web.dev",
+                "url": "https://web.dev/learn-web-vitals/"
+            })
+    
+    # Design resources
+    elif category_key == "design":
+        resources.append({
+            "title": "Web Design Best Practices",
+            "url": "https://www.smashingmagazine.com/category/design"
+        })
+    
+    return resources
+
+
 def _create_scan_issues(
     page_id: str,
     job_id: str,
@@ -580,6 +718,12 @@ def _create_scan_issues(
                     # Map icon to severity
                     severity_str = _map_icon_to_severity(icon)
                     
+                    # Generate business impact message based on category and severity
+                    business_impact = _generate_business_impact(issue_category, severity_str, title)
+                    
+                    # Get relevant resources/documentation links
+                    resources = _get_issue_resources(issue_category, title)
+                    
                     # Create ScanIssue record
                     issue = ScanIssue(
                         scan_page_id=page_id,
@@ -593,6 +737,9 @@ def _create_scan_issues(
                         element_selector=None,  # Not provided by current LLM response
                         element_html=None,  # Not provided by current LLM response
                         impact_score=None,  # Not provided by current LLM response
+                        affected_elements_count=1,  # Default to 1, can be enhanced later
+                        business_impact=business_impact,
+                        resources=resources,
                     )
                     
                     db.add(issue)
