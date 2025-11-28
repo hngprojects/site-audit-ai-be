@@ -23,40 +23,46 @@ class PageDiscoveryService:
         
         chrome_options = Options()
         
-        # Core headless options
+        # CRITICAL: These flags fix "Chrome failed to start" on Linux servers
         chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-setuid-sandbox")
         
-        # Critical: Use temp directory for user data
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-        chrome_options.add_argument("--data-path={}".format(os.path.join(temp_dir, "data")))
-        chrome_options.add_argument("--disk-cache-dir={}".format(os.path.join(temp_dir, "cache")))
-        
-        # Disable DevTools completely
-        chrome_options.add_argument("--disable-dev-tools")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        
-        # Performance and stability options
+        # Fix DevToolsActivePort file doesn't exist error
+        chrome_options.add_argument("--remote-debugging-pipe")
         chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-software-rasterizer")
         chrome_options.add_argument("--disable-background-networking")
+        
+        # Crash prevention flags
+        chrome_options.add_argument("--disable-crash-reporter")
+        chrome_options.add_argument("--disable-in-process-stack-traces")
+        chrome_options.add_argument("--disable-logging")
+        chrome_options.add_argument("--log-level=3")
+        chrome_options.add_argument("--output=/dev/null")
+        
+        # Use temp directory for user data (prevents profile lock issues)
+        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+        chrome_options.add_argument(f"--data-path={os.path.join(temp_dir, 'data')}")
+        chrome_options.add_argument(f"--disk-cache-dir={os.path.join(temp_dir, 'cache')}")
+        
+        # Additional stability options
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+        chrome_options.add_argument("--disable-dev-tools")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--no-zygote")
+        chrome_options.add_argument("--single-process")
         chrome_options.add_argument("--disable-default-apps")
         chrome_options.add_argument("--disable-sync")
         chrome_options.add_argument("--disable-translate")
         chrome_options.add_argument("--mute-audio")
         chrome_options.add_argument("--hide-scrollbars")
         chrome_options.add_argument("--metrics-recording-only")
-        chrome_options.add_argument("--no-first-run")
         chrome_options.add_argument("--safebrowsing-disable-auto-update")
         chrome_options.add_argument("--ignore-certificate-errors")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--start-maximized")
-        
-        # Disable automation flags
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
         
         # Use webdriver-manager with caching to avoid repeated downloads
         global _CHROMEDRIVER_PATH
