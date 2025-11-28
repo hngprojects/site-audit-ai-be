@@ -350,6 +350,9 @@ async def delete_account(
     await db.delete(user)
     await db.commit()
 
-    background_tasks.add_task(send_account_deleted, to_email=email, first_name=display_name)
+    # background_tasks.add_task(send_account_deleted, to_email=email, first_name=display_name)
 
-    return api_response(message="Account deleted successfully", data={"email": email})
+    return api_response(message="Account deleted successfully", 
+                        data={"email": email},
+                        status_code=status.HTTP_200_OK
+                        )
