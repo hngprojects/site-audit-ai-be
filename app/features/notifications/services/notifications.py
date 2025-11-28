@@ -97,6 +97,40 @@ class NotificationService:
         notifications = result.scalars().all()
 
         return list(notifications), total_count, unread_count
+
+    async def mark_as_read(self, user_id: str, notification_ids: list[str]) -> int:
+        """
+        Mark notifications as read. Returns number of updated notifications.
+        """
+        if not notification_ids:
+            return 0
+        stmt = (
+            update(Notification)
+            .where(
+                and_(
+                    Notification.id.in_(notification_ids),
+                    Notification.user_id == user_id,
+                    Notification.is_read.is_(False),
+                )
+            )
+            .values(is_read=True, read_at=datetime.now(timezone.utc))
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount  # type: ignore
+
+    async def mark_all_as_read(self, user_id: str) -> int:
+        """
+        Mark all user notifications as read. Returns number of updated notifications.
+        """
+        stmt = (
+            update(Notification).where(
+                and_(Notification.user_id == user_id, Notification.is_read.is_(False))
+            )
+        ).values(is_read=True, read_at=datetime.now(timezone.utc))
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount  # type: ignore
     async def get_user_settings(self, user_id: str) -> NotificationSettings:
         """
         Get user notification settings. Creates default settings if they don't exist.
