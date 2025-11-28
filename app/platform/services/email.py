@@ -1,139 +1,54 @@
+import os
 import smtplib
-from email.mime.text import MIMEText
+import ssl
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from jinja2 import Environment, FileSystemLoader
+
 from app.platform.config import settings
+from app.platform.logger import get_logger
+
+# Initialize Logger
+logger = get_logger("email_service")
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(current_dir, "../../features/auth/template")
+
+if not os.path.exists(template_dir):
+    template_dir = os.path.join(os.getcwd(), "app/features/auth/template")
+
+env = Environment(loader=FileSystemLoader(template_dir))
 
 
 def send_email(to_email: str, subject: str, body: str):
-    """
-    Send an HTML email using SMTP with proper TLS/SSL handling.
-    
-    MAIL_ENCRYPTION should be one of: "SSL", "TLS", or None.
-    MAIL_PORT must match the encryption type:
-        SSL -> 465
-        TLS -> 587
-        None -> 25 or custom
-    """
-    print("Email reached here:", body)
-
-    msg = MIMEMultipart()
+    """Base function to send email via SMTP"""
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = settings.MAIL_FROM_ADDRESS
     msg["To"] = to_email
+
     msg.attach(MIMEText(body, "html"))
 
     try:
-        if settings.MAIL_ENCRYPTION.upper() == "SSL":
-            server = smtplib.SMTP_SSL(settings.MAIL_HOST, settings.MAIL_PORT)
-
+        port = settings.MAIL_PORT
+        
+        if port == 465:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(settings.MAIL_HOST, port, context=context) as server:
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
         else:
-            server = smtplib.SMTP(settings.MAIL_HOST, settings.MAIL_PORT)
-            server.ehlo()
-            if settings.MAIL_ENCRYPTION.upper() == "TLS":
-                server.starttls()
+            with smtplib.SMTP(settings.MAIL_HOST, port) as server:
                 server.ehlo()
 
-        # Login
-        server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                if str(settings.MAIL_ENCRYPTION).upper() in ["TLS", "TRUE"]:
+                    server.starttls()
+                    server.ehlo()
 
-        # Send email
-        server.sendmail(settings.MAIL_FROM_ADDRESS, [to_email], msg.as_string())
-        server.quit()
+                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_FROM_ADDRESS, to_email, msg.as_string())
 
-        print(f"Email sent to {to_email}")
 
     except Exception as e:
-        print(f"Failed to send email to {to_email}: {e}")
-        raise
-
-
-def send_verification_otp(to_email: str, username: str, otp: str):
-    """Send OTP verification email to user"""
-    subject = "Verify Your Email Address - OTP Code"
-    
-    body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #4CAF50;">Welcome to Site Audit AI! 🎉</h2>
-                <p>Hi <strong>{username}</strong>,</p>
-                <p>Thanks for signing up! Please use the OTP code below to verify your email address:</p>
-                
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background-color: #f5f5f5; 
-                                padding: 20px; 
-                                border-radius: 10px;
-                                display: inline-block;">
-                        <p style="margin: 0; font-size: 14px; color: #666;">Your OTP Code</p>
-                        <h1 style="margin: 10px 0; 
-                                   font-size: 36px; 
-                                   letter-spacing: 8px;
-                                   color: #4CAF50;
-                                   font-weight: bold;">{otp}</h1>
-                    </div>
-                </div>
-                
-                <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                    This OTP will expire in <strong>10 minutes</strong>. If you didn't create an account, please ignore this email.
-                </p>
-                
-                <p style="color: #999; font-size: 12px; margin-top: 20px;">
-                    <strong>Security Tip:</strong> Never share this OTP with anyone. Site Audit AI will never ask for your OTP via phone or email.
-                </p>
-                
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="color: #999; font-size: 12px;">
-                    &copy; 2025 Site Audit AI. All rights reserved.
-                </p>
-            </div>
-        </body>
-    </html>
-    """
-    
-    send_email(to_email, subject, body)
-
-
-
-    """Send password reset email to user"""
-    subject = "Password Reset Request - Site Audit AI"
-
-    body = f"""
-    <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #FF6B35;">Password Reset Request</h2>
-                <p>Hi there,</p>
-                <p>We received a request to reset your password for your Site Audit AI account. If you made this request, please use the OTP code below:</p>
-
-                <div style="text-align: center; margin: 30px 0;">
-                    <div style="background-color: #f5f5f5; 
-                                padding: 20px; 
-                                border-radius: 10px;
-                                display: inline-block;">
-                        <p style="margin: 0; font-size: 14px; color: #666;">Your OTP Code</p>
-                        <h1 style="margin: 10px 0; 
-                                   font-size: 36px; 
-                                   letter-spacing: 8px;
-                                   color: #FF6B35;
-                                   font-weight: bold;">{otp}</h1>
-                    </div>
-                </div>
-
-                <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                    This OTP will expire in <strong>10 minutes</strong>. If you didn't request a password reset, please ignore this email.
-                </p>
-
-                <p style="color: #999; font-size: 12px; margin-top: 20px;">
-                    <strong>Security Tip:</strong> Never share this OTP with anyone. Site Audit AI will never ask for your OTP via phone or email.
-                </p>
-
-                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-                <p style="color: #999; font-size: 12px;">
-                    &copy; 2025 Site Audit AI. All rights reserved.
-                </p>
-            </div>
-        </body>
-    </html>
-    """
-
-    send_email(to_email, subject, body)
+        logger.error(f"CRITICAL EMAIL ERROR: {str(e)}")

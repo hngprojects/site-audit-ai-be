@@ -1,0 +1,30 @@
+{% extends "base_email.html" %}
+
+{% block title %}Review on the way{% endblock %}
+
+{% block content %}
+    <div class="text-center">
+        <h2>Your Free Website Review Is On The Way</h2>
+        <p style="color: #666;">We're taking a closer look - just for your business</p>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+
+    <p>Hi {{ first_name }},</p>
+    <p>Thanks for requesting a free expert review! We're already taking a closer look at your website, and your breakdown will arrive within 24 hours.</p>
+    <p>Here's what we're doing next:</p>
+
+    <div class="list-box">
+        <ul style="padding-left: 20px; color: #555; line-height: 1.8; margin: 0;">
+            <li>Reviewing your performance, usability, and visibility</li>
+            <li>Identify the issues affecting your customers</li>
+            <li>Preparing simple, clear steps you take immediately</li>
+        </ul>
+    </div>
+
+    <p>While you wait, you can explore your dashboard to see your current scores and alerts.</p>
+
+    <div class="text-center">
+        <a href="{{ dashboard_url }}" class="btn">Go to my dashboard</a>
+    </div>
+{% endblock %}

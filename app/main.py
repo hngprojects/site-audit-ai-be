@@ -1,24 +1,35 @@
+import logging
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
+
 from app.api_routers.v1 import api_router
-from app.features.waitlist.routes.waitlist import router as waitlist_router
 from app.features.health.routes.health import router as health_router
+from app.features.waitlist.routes.waitlist import router as waitlist_router
 from app.platform.exceptions import add_exception_handlers
-import logging
 
 # Configure logging to show INFO level messages
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 app = FastAPI(
-    title="Site Audit AI API",
-    description="API for website auditing and analysis",
-    version="1.0.0"
+    title="Site Audit AI API", description="API for website auditing and analysis", version="1.0.0"
 )
+
+
+# Root endpoint for basic info
+@app.get("/", tags=["Info"])
+def root():
+    return {
+        "app_name": "Site Audit AI API",
+        "description": "AI-powered website health auditor for non-technical users.",
+        "version": "1.0.0",
+        "docs_url": "/docs",
+        "api_base": "/api/v1",
+    }
 
 
 app.add_middleware(
