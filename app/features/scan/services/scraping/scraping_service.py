@@ -19,40 +19,28 @@ class ScrapingService:
         # Create temp directory for Chrome user data to avoid DevToolsActivePort issues
         temp_dir = tempfile.mkdtemp()
         
-        # Core headless options
+        # Essential flags for headless Chrome on Linux VPS
         chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
         
-        # Critical: Use temp directory for user data
+        # Use temp directory to avoid profile conflicts
         chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-        chrome_options.add_argument("--data-path={}".format(os.path.join(temp_dir, "data")))
-        chrome_options.add_argument("--disk-cache-dir={}".format(os.path.join(temp_dir, "cache")))
         
-        # Disable DevTools completely
-        chrome_options.add_argument("--disable-dev-tools")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        
-        # Performance and stability options
+        # Additional stability flags
+        chrome_options.add_argument("--disable-setuid-sandbox")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-background-networking")
-        chrome_options.add_argument("--disable-default-apps")
-        chrome_options.add_argument("--disable-sync")
-        chrome_options.add_argument("--disable-translate")
-        chrome_options.add_argument("--mute-audio")
-        chrome_options.add_argument("--hide-scrollbars")
-        chrome_options.add_argument("--metrics-recording-only")
         chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--safebrowsing-disable-auto-update")
         chrome_options.add_argument("--ignore-certificate-errors")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--start-maximized")
         
-        # Disable automation flags
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
+        # Suppress unnecessary output
+        chrome_options.add_argument("--log-level=3")
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        
+        # Page load strategy
         chrome_options.set_capability("pageLoadStrategy", "eager")
 
         # Use webdriver-manager with caching to avoid repeated downloads
