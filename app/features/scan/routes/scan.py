@@ -23,6 +23,7 @@ from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
 from app.features.scan.services.orchestration.history import get_user_scan_history
+from app.features.scan.services.issue import get_issue_by_id, format_issue_detail
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -546,6 +547,60 @@ async def get_scan_results(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"Error fetching scan results: {str(e)}",
             data={}
+        )
+
+
+# New endpoint: GET /scan/issues/{issue_id}
+# Add this after the /results endpoint in app/features/scan/routes/scan.py
+
+@router.get("/issues/{issue_id}")
+async def get_issue_detail(
+    issue_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get detailed information about a specific issue.
+    
+    Returns comprehensive issue details including:
+    - Full description and recommendations
+    - Business impact explanation
+    - Affected elements
+    - Helpful resources/documentation links
+    
+    Args:
+        issue_id: The issue ID
+        db: Database session
+        
+    Returns:
+        IssueDetail with all information about the issue
+    """
+    
+    try:
+        # Fetch issue by ID
+        issue = await get_issue_by_id(db, issue_id)
+        
+        if not issue:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Issue {issue_id} not found"
+            )
+        
+        # Format as detailed response
+        issue_detail = format_issue_detail(issue)
+        
+        return api_response(
+            data=issue_detail,
+            message="Issue details retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching issue details: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching issue details: {str(e)}"
         )
 
 
