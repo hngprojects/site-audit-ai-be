@@ -109,4 +109,4 @@ pytest
 Built with ❤️ using FastAPI and modern Python tools
 
 ## 📬 Postman Collection
-https://speeding-flare-275280.postman.co/workspace/My-Workspace~a868d937-3ee7-4c73-8bfc-f48ec570af19/collection/41523557-5b1d579b-9d6a-4658-bd47-a219d743d6df?action=share&creator=41523557
+https://elements.getpostman.com/redirect?entityId=41523557-0ef52a59-0512-40b8-a3db-9fd3fea0020f&entityType=collection
