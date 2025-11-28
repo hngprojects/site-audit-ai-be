@@ -55,14 +55,24 @@ class ScanResultsResponse(BaseModel):
 
 class ScanHistoryItem(BaseModel):
     """Schema for a single item in the user's scan history."""
-    job_id: str
-    url: str
+    id: str
     status: str
     created_at: datetime
     completed_at: Optional[datetime] = None
+    site: Dict[str, Any]
     
     class Config:
         from_attributes = True
+        
+    @property
+    def job_id(self) -> str:
+        """Alias for id to maintain backward compatibility."""
+        return self.id
+    
+    @property
+    def url(self) -> str:
+        """Extract URL from the site relationship."""
+        return self.site.get('root_url', 'Unknown') if isinstance(self.site, dict) else getattr(self.site, 'root_url', 'Unknown')
 
 # ============================================================================
 # Phase 1: Discovery Schemas
