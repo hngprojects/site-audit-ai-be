@@ -132,3 +132,45 @@ async def soft_delete_site_by_id_for_owner(
         raise HTTPException(status_code=404, detail="Site not found")
     await db.commit()
     return site
+
+
+async def update_site_scan_frequency(
+    db: AsyncSession,
+    site_id: str,
+    scan_frequency,
+    scan_frequency_enabled: bool,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
+    """Update periodic scan frequency settings for a site"""
+    from datetime import datetime, timedelta
+    from app.features.sites.models.site import ScanFrequency
+    
+    # Get the site first to verify ownership
+    site = await get_site_by_id_for_owner(
+        db=db,
+        site_id=site_id,
+        user_id=user_id,
+        device_id=device_id
+    )
+    
+    # Calculate next scheduled scan time based on frequency
+    next_scheduled_scan = None
+    if scan_frequency_enabled and scan_frequency != ScanFrequency.disabled:
+        now = datetime.utcnow()
+        if scan_frequency == ScanFrequency.daily:
+            next_scheduled_scan = now + timedelta(days=1)
+        elif scan_frequency == ScanFrequency.weekly:
+            next_scheduled_scan = now + timedelta(days=7)
+        elif scan_frequency == ScanFrequency.monthly:
+            next_scheduled_scan = now + timedelta(days=30)
+    
+    # Update the site
+    site.scan_frequency = scan_frequency
+    site.scan_frequency_enabled = scan_frequency_enabled
+    site.next_scheduled_scan = next_scheduled_scan
+    
+    await db.commit()
+    await db.refresh(site)
+    return site
+
