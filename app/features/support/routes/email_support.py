@@ -33,10 +33,10 @@ async def create_support_ticket(
     ticket_service = TicketService(db)
     ticket = await ticket_service.create_ticket(
         email=request.email,
+        message=request.message,
+        subject=request.subject,
         full_name=request.full_name,
         phone_number=request.phone_number,
-        subject=request.subject,
-        message=request.message,
         source=request.source,
     )
 
