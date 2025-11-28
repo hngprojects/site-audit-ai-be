@@ -20,6 +20,7 @@ from app.features.support.models.support_ticket import SupportTicket
 from app.features.sites.models.site import Site
 from app.features.scan.models.scan_job import ScanJob
 from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.models.scan_issue import ScanIssue
 from app.features.scan.models.device_session import DeviceSession 
 from app.features.request_form.models.request_form import RequestForm
 
