@@ -131,6 +131,27 @@ class NotificationService:
         result = await self.db.execute(stmt)
         await self.db.commit()
         return result.rowcount  # type: ignore
+
+    async def delete_notification(self, user_id: str, notification_id: str) -> bool:
+        """
+        Delete a notification. Returns True if deleted, False if not found.
+        """
+        stmt = delete(Notification).where(
+            and_(Notification.id == notification_id, Notification.user_id == user_id)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount > 0  # type: ignore
+
+    async def delete_all_notifications(self, user_id: str) -> int:
+        """
+        Delete all user notifications. Returns number of deleted notifications.
+        """
+        stmt = delete(Notification).where(Notification.user_id == user_id)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount > 0  # type: ignore
+
     async def get_user_settings(self, user_id: str) -> NotificationSettings:
         """
         Get user notification settings. Creates default settings if they don't exist.
