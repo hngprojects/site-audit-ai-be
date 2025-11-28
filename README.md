@@ -107,3 +107,6 @@ pytest
 ---
 
 Built with ❤️ using FastAPI and modern Python tools
+
+## 📬 Postman Collection
+https://elements.getpostman.com/redirect?entityId=41523557-0ef52a59-0512-40b8-a3db-9fd3fea0020f&entityType=collection
