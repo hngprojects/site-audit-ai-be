@@ -11,6 +11,11 @@ class RequestFormCreate(BaseModel):
     website: HttpUrl | str = Field(..., description="Target website URL (required)")
     selected_category: List[str] = Field(..., min_length=1, description="At least one category must be selected")
 
+class RequestFormUpdate(BaseModel):
+    selected_category: List[str] = Field(..., min_length=1, description="At least one category must be selected")
+
+class RequestFormStatusUpdate(BaseModel):
+    status: RequestStatus = Field(..., description="New status value")
 
 class RequestFormResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -21,7 +26,6 @@ class RequestFormResponse(BaseModel):
     selected_category: list[str]
     status: RequestStatus
     created_at: datetime
-
 
 class RequestFormStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

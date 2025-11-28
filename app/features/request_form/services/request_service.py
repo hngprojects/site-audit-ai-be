@@ -1,6 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 
 from app.features.request_form.models.request_form import RequestForm, RequestStatus
 from app.platform.logger import get_logger
@@ -17,25 +17,17 @@ class RequestFormService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_user_email(self, user_id: str) -> str:
-        result = await self.db.execute(select(User.email).where(User.id == user_id))
-        email = result.scalar_one_or_none()
-        if not email:
+    async def get_user_details(self, user_id: str) -> str:
+        result = await self.db.execute(select(User.email, User.username).where(User.id == user_id))
+        user_details = result.mappings().one_or_none()
+        if not user_details:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        return email
+        return user_details
     
-    async def get_user_name(self, user_id: str) -> str:
-        result = await self.db.execute(select(User.username).where(User.id == user_id))
-        username = result.scalar_one_or_none()
-        if not username:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        return username
-
     async def create_request(
         self,
         user_id: str,
         job_id: str,
-        website: str,
         selected_category: list[str],
     ) -> RequestForm:
         if not selected_category:
@@ -44,13 +36,13 @@ class RequestFormService:
                 detail="At least one category must be selected.",
             )
 
-        await self.get_user_email(user_id)  # validate user exists
+        await self.get_user_details(user_id)  # validate user exists
 
         submission = RequestForm(
             user_id=user_id,
             job_id=job_id,
             selected_category=selected_category,
-            status=RequestStatus.RECEIVED,
+            status=RequestStatus.PENDING,
         )
         self.db.add(submission)
 
@@ -65,21 +57,56 @@ class RequestFormService:
                 detail="Could not submit request at this time.",
             )
 
-        logger.info(
-            "Request form stored",
-            extra={
-                "request_id": submission.request_id,
-                "user_id": user_id,
-                "job_id": job_id,
-                "website": website,
-                "selected_category": selected_category,
-            },
-        )
         return submission
 
-    async def get_request(self, request_id: str) -> RequestForm | None:
+    async def get_specific_request(self, request_id: str) -> RequestForm | None:
         result = await self.db.execute(select(RequestForm).where(RequestForm.request_id == request_id))
         return result.scalar_one_or_none()
+      
+    async def list_all_requests_for_user(self, user_id: str) -> list[RequestForm]:
+        result = await self.db.execute(select(RequestForm).where(RequestForm.user_id == user_id))
+        return result.scalars().all()
+    
+    async def update_request(self, request_id: str, selected_category: list[str]) -> RequestForm:
+        if not selected_category:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one category must be selected.",
+            )
+
+        stmt = (
+            update(RequestForm)
+            .where(RequestForm.request_id == request_id)
+            .values(selected_category=selected_category)
+            .returning(RequestForm)
+        )
+        result = await self.db.execute(stmt)
+        updated = result.scalars().first()
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+        await self.db.commit()
+        return updated
+    
+    async def update_status(self, request_id: str, new_status: RequestStatus) -> RequestForm:
+        stmt = (
+            update(RequestForm)
+            .where(RequestForm.request_id == request_id)
+            .values(status=new_status)
+            .returning(RequestForm)
+        )
+        result = await self.db.execute(stmt)
+        updated = result.scalars().first()
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+        await self.db.commit()
+        return updated
+    
+    async def delete_request(self, request_id: str) -> None:
+        stmt = delete(RequestForm).where(RequestForm.request_id == request_id)
+        result = await self.db.execute(stmt)
+        if result.rowcount == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+        await self.db.commit()
     
 
     async def send_notification(self, website, user_email, username) -> None:
@@ -93,7 +120,7 @@ class RequestFormService:
             FileSystemLoader(str(base_template)),
         ])
     )
-        template = env.get_template("admin_email.html")
+        template = env.get_template("request_form_email.html")
         
         html_content = template.render({
             "website" : website,
