@@ -56,9 +56,6 @@ async def start_scan(
     try:
         url_str = str(data.url)
         parsed = urlparse(url_str)
-        domain = parsed.netloc
-        
-        normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
         
         # Extract user_id from token if authenticated
         user_id = None
@@ -74,28 +71,36 @@ async def start_scan(
         if not user_id:
             user_id = data.user_id
         
-        # Check if Site exists, create if not
-        site_query = select(Site).where(
-            Site.root_url == url_str,
-            Site.user_id == None 
-        )
+        # Generate device_id for anonymous users (needed for both Site and ScanJob)
+        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        
+        # Check if Site exists for this user (or anonymous), create if not
+        if user_id:
+            # For authenticated users, check for their site
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            # For anonymous users, check for anonymous site by device_id
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
         
         if not site:
             site = Site(
-                user_id=None,
+                user_id=user_id,
+                device_id=device_id,  # Include device_id for anonymous users
                 root_url=url_str,
-                root_url_normalized=normalized_url,
-                domain=domain,
                 total_scans=0
             )
             db.add(site)
             await db.flush() 
         
         # Create ScanJob
-        # Generate device_id for anonymous scans. Tests
-        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
         scan_job = ScanJob(
             user_id=user_id,  # Set if authenticated
@@ -139,11 +144,10 @@ async def start_scan(
             pages=discovered_pages,
             top_n=data.top_n,
             referer=url_str,
-            site_title=domain
         )
         
         scan_job.pages_selected = len(selected_urls)
-        scan_job.status = ScanJobStatus.completed  # No scraping/analysis yet
+        scan_job.status = ScanJobStatus.completed 
         scan_job.completed_at = datetime.utcnow()
         
         
@@ -226,17 +230,29 @@ async def start_scan_async(
         if not user_id:
             user_id = data.user_id
         
-        # Check if Site exists, create if not
-        site_query = select(Site).where(
-            Site.root_url == url_str,
-            Site.user_id == None 
-        )
+        # Generate device_id for anonymous users (needed for both Site and ScanJob)
+        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        
+        # Check if Site exists for this user (or anonymous), create if not
+        if user_id:
+            # For authenticated users, check for their site
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            # For anonymous users, check for anonymous site by device_id
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
         
         if not site:
             site = Site(
-                user_id=None,
+                user_id=user_id,
+                device_id=device_id,
                 root_url=url_str,
                 total_scans=0
             )
@@ -244,7 +260,6 @@ async def start_scan_async(
             await db.flush() 
         
         # Create ScanJob with queued status
-        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
         scan_job = ScanJob(
             user_id=user_id,
