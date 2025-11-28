@@ -56,13 +56,26 @@ class TicketService:
     async def create_ticket(
         self,
         email: str,
-        subject: str,
         message: str,
+        subject: str | None = None,
         full_name: str | None = None,
         phone_number: str | None = None,
         source: str | None = "mobile",
     ) -> SupportTicket:
-        """Create a new support ticket"""
+        """Create a new support ticket
+        
+        Args:
+            email: User's email address
+            message: The message content
+            subject: Optional subject line (auto-generated from message if not provided)
+            full_name: Optional user's full name
+            phone_number: Optional phone number
+            source: Origin of request (mobile/web/api)
+        """
+        # Auto-generate subject from message if not provided
+        if not subject:
+            # Take first 50 chars of message as subject
+            subject = f"Contact Form: {message[:50]}..." if len(message) > 50 else f"Contact Form: {message}"
 
         for _ in range(2):  # one retry if unique ticket_id collides
             ticket = SupportTicket(
