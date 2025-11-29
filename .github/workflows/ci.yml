@@ -18,7 +18,7 @@ concurrency:
 jobs:
   tests:
     runs-on:
-        group: site-audit
+        group: site
     env:
       DATABASE_URL: ${{ secrets.CI_DB }}
     steps:
