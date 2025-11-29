@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.features.scan.schemas.scan import ScrapingRequest, ScrapingResponse
-from app.features.scan.services.extraction.extractor_service import ExtractorService
 from app.features.scan.services.scraping.scraping_service import ScrapingService
+from app.features.scan.services.extraction.extractor_service import ExtractorService
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.response import api_response
 
@@ -36,11 +36,14 @@ async def test_extraction(
         GET /scan/scraping/extract-test?url=https://example.com
     """
     try:
+        scraper = None
         driver = None
 
         try:
             page_url = str(url)
-            driver = ScrapingService.load_page(page_url)
+            # Initialize scraping service
+            scraper = ScrapingService(headless=True, timeout=30)
+            driver = scraper.load_page(page_url)
 
             # Use the unified extract_from_html method
             # First get the HTML
@@ -49,9 +52,15 @@ async def test_extraction(
             # Extract all data using the standardized method
             extracted_data = ExtractorService.extract_from_html(html, page_url)
             
+            # Add HTML preview for debugging
+            response_data = extracted_data
+            if isinstance(response_data, dict):
+                response_data["debug_html_preview"] = html[:1000]  # First 1000 chars
+                response_data["debug_html_length"] = len(html)
+            
             return api_response(
                 message=f"Successfully extracted data from {page_url}",
-                data=extracted_data
+                data=response_data
             )
         except Exception as e:
             return api_response(
@@ -73,15 +82,18 @@ async def test_extraction(
 
 @router.post("", response_model=ScrapingResponse)
 async def scrape_pages(
-    # data: ScrapingRequest,
-    url,
+    data: ScrapingRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
+    Scrape selected pages using Selenium and extract comprehensive data.
+    
     This endpoint:
-    - Takes selected pages
+    - Takes selected pages from the request
     - Uses Selenium to scrape full page content
-    - Creates ScanPage records for each page
+    - Extracts metadata, headings, images, links, performance metrics,
+      accessibility features, design signals, and text content
+    - Returns comprehensive scraping data
     
     Called by: Scraping worker after selection completes
     
@@ -93,44 +105,39 @@ async def scrape_pages(
         ScrapingResponse with scraped page data
     """
     try:
-        driver = None
-
-        try:
-            page_url = str(url)
-            driver = ScrapingService.load_page(page_url)
-
-            # Extractor Engines
-            headings = ExtractorService.extract_headings(driver)
-            images = ExtractorService.extract_images(driver)
-            issues = ExtractorService.extract_accessibility(driver, headings=headings, images=images)
-            text_content = ExtractorService.extract_text_content(driver)
-            metadata = ExtractorService.extract_metadata(driver)
-
-            response_data = {
-                "heading_data" : headings,
-                "images_data" : images,
-                "issues_data" : issues,
-                "text_content_data" : text_content,
-                "metadata_data" : metadata,
+        # Initialize scraping service
+        scraper = ScrapingService(headless=True, timeout=30)
+        
+        # Scrape all pages
+        scraped_pages = scraper.scrape_multiple_pages(data.pages)
+        
+        # TODO: Store scraped data in ScanPage records
+        # - Save HTML content, metadata, and extracted data
+        # - Update ScanJob scraping_status to 'completed'
+        # - Calculate and store page scores
+        
+        return api_response(
+            data={
+                "scraped_pages": scraped_pages,
+                "count": len(scraped_pages),
+                "job_id": data.job_id,
+                "message": f"Successfully scraped {len(scraped_pages)} pages"
             }
-            
-            return api_response(data=response_data)
-        except Exception as e:
-            return api_response(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                message=str(e),
-                data={}
-            )
-        finally:
-            if driver:
-                driver.quit()
+        )
             
     except Exception as e:
+        # Log the full error with traceback
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Scraping failed: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         # TODO: If job_id provided, mark scraping_status = 'failed'
         return api_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"Scraping failed: {str(e)}",
-            data={}
+            data={"error": str(e), "traceback": traceback.format_exc()}
         )
 
 
