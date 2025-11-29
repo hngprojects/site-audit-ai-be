@@ -9,6 +9,7 @@ from app.features.referral.schemas.referral_link import (
     ClicksBySourceResponse
 )
 from app.features.auth.routes.auth import get_current_user
+from app.features.referral.services.share_message import ShareMessageService
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.platform.config import settings
@@ -16,7 +17,7 @@ from app.platform.config import settings
 router = APIRouter(prefix="/referral-links", tags=["Referral"])
 
 
-@router.post(
+@router.get(
     "",
     response_model=dict,
     status_code=status.HTTP_201_CREATED,
@@ -116,4 +117,31 @@ async def get_referral_stats(
         data=stats,
         message="Referral statistics retrieved successfully",
         status_code=status.HTTP_200_OK
+    )
+
+
+@router.get(
+    "/share-message",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Get personalized share message for a platform",
+)
+async def get_share_message(
+    platform: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    """
+    Get a personalized share message for the authenticated user.
+
+    Args:
+        platform: The platform to get the message for (e.g., 'whatsapp', 'instagram')
+
+    Returns:
+        GetShareMessageResponse with personalized message and referral link
+    """
+    service = ShareMessageService(db)
+
+    result = await service.get_share_message(platform=platform, user_data=current_user)
+
+    return api_response(
+        data=result, message="Share message retrieved successfully", status_code=status.HTTP_200_OK
     )
