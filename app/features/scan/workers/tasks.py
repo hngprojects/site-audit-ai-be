@@ -747,7 +747,7 @@ def _create_scan_issues(
                         element_selector=None,  # Not provided by current LLM response
                         element_html=None,  # Not provided by current LLM response
                         impact_score=impact_score,  # Calculated based on severity
-                        affected_elements_count=1,  # Default to 1, can be enhanced later
+                        affected_elements_count=0,  # Default to 0 since we don't have element details yet
                         business_impact=business_impact,
                         resources=resources,
                     )
