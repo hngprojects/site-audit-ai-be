@@ -23,7 +23,7 @@ from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
 from app.features.scan.services.orchestration.history import get_user_scan_history
-from app.features.scan.services.issue import get_issue_by_id, format_issue_detail
+from app.features.scan.services.issue import get_issue_by_id, format_issue_detail, count_issues_by_severity, format_issue_summary, get_issues_for_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -549,9 +549,6 @@ async def get_scan_results(
             data={}
         )
 
-
-# New endpoint: GET /scan/issues/{issue_id}
-# Add this after the /results endpoint in app/features/scan/routes/scan.py
 
 @router.get("/issues/{issue_id}")
 async def get_issue_detail(

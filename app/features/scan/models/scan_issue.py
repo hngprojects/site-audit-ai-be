@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Integer, Float, Text, ForeignKey, Index, Enum, JSON
+from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
 
@@ -55,6 +56,10 @@ class ScanIssue(BaseModel):
     affected_elements_count = Column(Integer, nullable=True, default=0)  # Number of affected elements
     business_impact = Column(Text, nullable=True)  # Business consequences explanation
     resources = Column(JSON, nullable=True)  # Helpful links/documentation as JSON array
+    
+    # Relationships
+    scan_page = relationship("ScanPage", back_populates="issues", lazy="select")
+    scan_job = relationship("ScanJob", lazy="select")
     
     # Constraints
     __table_args__ = (

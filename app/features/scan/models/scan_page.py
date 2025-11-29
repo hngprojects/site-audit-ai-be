@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Boolean, Integer, Float, DateTime, Text, ForeignKey, Index, JSON
+from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from app.platform.db.base import BaseModel
@@ -62,6 +63,9 @@ class ScanPage(BaseModel):
     
     # Timestamps (created_at and updated_at inherited from BaseModel)
     scanned_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    issues = relationship("ScanIssue", back_populates="scan_page", cascade="all, delete-orphan")
     
     @property
     def is_selected(self) -> bool:
