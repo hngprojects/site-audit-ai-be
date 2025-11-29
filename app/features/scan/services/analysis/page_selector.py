@@ -29,7 +29,7 @@ class PageSelectorService:
     @staticmethod
     def filter_important_pages(
         pages: List[str],
-        top_n: int = 7,
+        top_n: int = 5,
         referer: str = "",
         site_title: str = ""
     ) -> List[str]:
