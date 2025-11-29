@@ -21,36 +21,59 @@ class PageDiscoveryService:
         # Create temp directory for Chrome user data to avoid DevToolsActivePort issues
         temp_dir = tempfile.mkdtemp()
         
+        # chrome_options = Options()
+        
+        # # Core headless options
+        # chrome_options.add_argument("--headless=new")
+        # chrome_options.add_argument("--disable-gpu")
+        # chrome_options.add_argument("--no-sandbox")
+        # chrome_options.add_argument("--disable-dev-shm-usage")
+
         chrome_options = Options()
+        chrome_options.add_argument('--headless')  # Headless mode
+        chrome_options.add_argument('--no-sandbox')  
+
         
-        # Essential flags for headless Chrome on Linux VPS
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
+        # # Critical: Use temp directory for user data
+        # chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+        # chrome_options.add_argument("--data-path={}".format(os.path.join(temp_dir, "data")))
+        # chrome_options.add_argument("--disk-cache-dir={}".format(os.path.join(temp_dir, "cache")))
         
-        # Use temp directory to avoid profile conflicts
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
+        # # Disable DevTools completely
+        # chrome_options.add_argument("--disable-dev-tools")
+        # chrome_options.add_argument("--remote-debugging-port=0")
         
-        # Additional stability flags
-        chrome_options.add_argument("--disable-setuid-sandbox")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--ignore-certificate-errors")
-        chrome_options.add_argument("--window-size=1920,1080")
+        # # Performance and stability options
+        # chrome_options.add_argument("--disable-extensions")
+        # chrome_options.add_argument("--disable-software-rasterizer")
+        # chrome_options.add_argument("--disable-background-networking")
+        # chrome_options.add_argument("--disable-default-apps")
+        # chrome_options.add_argument("--disable-sync")
+        # chrome_options.add_argument("--disable-translate")
+        # chrome_options.add_argument("--mute-audio")
+        # chrome_options.add_argument("--hide-scrollbars")
+        # chrome_options.add_argument("--metrics-recording-only")
+        # chrome_options.add_argument("--no-first-run")
+        # chrome_options.add_argument("--safebrowsing-disable-auto-update")
+        # chrome_options.add_argument("--ignore-certificate-errors")
+        # chrome_options.add_argument("--window-size=1920,1080")
+        # chrome_options.add_argument("--start-maximized")
         
-        # Suppress unnecessary output
-        chrome_options.add_argument("--log-level=3")
-        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        # # Disable automation flags
+        # chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
+        # chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # Use webdriver-manager with caching to avoid repeated downloads
-        global _CHROMEDRIVER_PATH
-        if _CHROMEDRIVER_PATH is None:
-            _CHROMEDRIVER_PATH = ChromeDriverManager().install()
+        # # Use webdriver-manager with caching to avoid repeated downloads
+        # global _CHROMEDRIVER_PATH
+        # if _CHROMEDRIVER_PATH is None:
+        #     _CHROMEDRIVER_PATH = ChromeDriverManager().install()
         
-        service = Service(_CHROMEDRIVER_PATH)
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        # service = Service(_CHROMEDRIVER_PATH)
+        # driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver_service = Service(executable_path='/usr/local/bin/chromedriver')  
+        driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+        # driver.get('https://www.google.com')
+
         driver.get(url)
         visited = set()
         to_visit = [url]
