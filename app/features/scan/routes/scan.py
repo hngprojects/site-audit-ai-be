@@ -117,7 +117,7 @@ async def start_scan(
         discovery_service = PageDiscoveryService()
         discovered_pages = discovery_service.discover_pages(
             url=url_str,
-            max_pages=100
+            max_pages=1
         )
         
         scan_job.pages_discovered = len(discovered_pages)
@@ -277,7 +277,7 @@ async def start_scan_async(
             job_id=scan_job.id,
             url=url_str,
             top_n=data.top_n,
-            max_pages=100
+            max_pages=1
         )
         
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")

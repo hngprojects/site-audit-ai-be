@@ -60,7 +60,7 @@ def discover_pages(
     self,
     job_id: str,
     url: str,
-    max_pages: int = 100
+    max_pages: int = 1
 ) -> Dict[str, Any]:
     """
     Discover all pages on a website.
@@ -850,7 +850,7 @@ def run_scan_pipeline(
     job_id: str,
     url: str,
     top_n: int = 5,
-    max_pages: int = 100,
+    max_pages: int = 1,
     notification_email: Optional[str] = None,
     user_name: Optional[str] = None
 ) -> str:

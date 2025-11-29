@@ -88,7 +88,7 @@ def check_and_trigger_periodic_scans(self):
                     job_id=str(scan_job.id),
                     url=site.root_url,
                     top_n=5,
-                    max_pages=100,
+                    max_pages=1,
                     notification_email=user_email,
                     user_name=user_name
                 )
