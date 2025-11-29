@@ -7,7 +7,7 @@ on:
 
 jobs:
   check-branch:
-    runs-on: site-audit
+    runs-on: self-hosted
     steps:
       - name: Get branch name
         id: branch
