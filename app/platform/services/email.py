@@ -25,7 +25,7 @@ env = Environment(loader=FileSystemLoader(template_dir))
 def send_email(to_email: str, subject: str, body: str):
     """
     Send email via HTTP relay service
-    Falls back to direct SMTP if relay is not configured
+    Falls back to direct SMTP if relay is not configured.
     """
     if settings.EMAIL_RELAY_URL and settings.EMAIL_RELAY_API_KEY:
         try:
