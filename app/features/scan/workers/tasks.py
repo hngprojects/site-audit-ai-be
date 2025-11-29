@@ -561,9 +561,13 @@ def _create_scan_issues(
             "seo": IssueCategory.seo,
         }
         
+        logger.info(f"Creating scan issues for page {page_id}, job {job_id}")
+        logger.debug(f"Detailed analysis keys: {list(detailed_analysis.keys())}")
+        
         for section_key, issue_category in categories_map.items():
             section = detailed_analysis.get(section_key, {})
             problems = section.get("problems", [])
+            logger.info(f"Found {len(problems)} problems in {section_key} section")
             
             for problem in problems:
                 try:
@@ -665,10 +669,11 @@ def _update_page_analysis(
             try:
                 # Get job_id from the page object
                 job_id = page.scan_job_id
+                logger.info(f"About to create scan issues for page {page_id}, job {job_id}")
                 issues_count = _create_scan_issues(page_id, job_id, detailed_analysis)
-                logger.info(f"Created {issues_count} issues for page {page_id}")
+                logger.info(f"✅ Successfully created {issues_count} issues for page {page_id}")
             except Exception as e:
-                logger.error(f"Failed to create scan issues for page {page_id}: {e}", exc_info=True)
+                logger.error(f"❌ Failed to create scan issues for page {page_id}: {e}", exc_info=True)
                 # Don't fail the whole analysis if issue creation fails
         else:
             logger.warning(f"Page {page_id} not found in database")
