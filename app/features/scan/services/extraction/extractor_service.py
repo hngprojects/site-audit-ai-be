@@ -433,6 +433,7 @@ class ExtractorService:
         # Load HTML in Selenium to use existing extraction methods
         driver = None
         try:
+            # Use ScrapingService's build_driver static method to get a properly configured driver
             driver = ScrapingService.build_driver()
             driver.get("data:text/html;charset=utf-8," + html)
             

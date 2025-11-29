@@ -281,8 +281,17 @@ def scrape_page(
     page_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Scrape HTML content for a single page using ScrapingService.
-    Returns serializable data that can be passed to extract_data task.
+    Scrape and extract comprehensive data for a single page using Selenium.
+    
+    Extracts:
+    - Metadata (title, description, meta tags)
+    - Headings hierarchy (h1-h6)
+    - Images (src, alt, dimensions)
+    - Links (internal, external)
+    - Performance metrics (TTFB, load time)
+    - Accessibility features (ARIA, semantic HTML)
+    - Design signals (colors, fonts, spacing)
+    - Text content (word count, readability)
     
     Args:
         job_id: The scan job ID
@@ -290,45 +299,93 @@ def scrape_page(
         page_id: Optional page record ID
 
     Returns:
-        Dict with scraped HTML and metadata (fully serializable)
+        Dict with comprehensive scraped data
     """
     from app.features.scan.services.scraping.scraping_service import ScrapingService
     
     logger.info(f"[{job_id}] Scraping page: {page_url}")
+    
+
 
     try:
-        # Use improved scrape_page method that returns serializable data
-        scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
+        # Initialize scraping service
+        scraper = ScrapingService(headless=True, timeout=30)
         
-        if not scrape_result["success"]:
-            logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
-            raise Exception(scrape_result.get("error", "Unknown scraping error"))
+        # Scrape page and extract all data
+        report = scraper.scrape_page(page_url)
         
-        # Store basic scraping info in database
-        if page_id and scrape_result["html"]:
-            _update_page_scrape_data(
-                page_id,
-                scrape_result["html"],
-                scrape_result["page_title"],
-                scrape_result["content_length"]
-            )
+        # Store scraped data in database if page_id provided
+        if page_id:
+            _store_scraped_data(page_id, report)
         
-        result = {
-            "job_id": job_id,
-            "page_id": page_id,
-            "page_url": page_url,
-            "html": scrape_result["html"],
-            "page_title": scrape_result["page_title"],
-            "content_length": scrape_result["content_length"],
-            "current_url": scrape_result.get("current_url", page_url)
-        }
+        logger.info(f"[{job_id}] Successfully scraped {page_url}")
         
-        logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
-        return result
+
         
-    except Exception as e:
-        logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
+        # Store error in database if page_id provided
+        if page_id:
+            _store_scraping_error(page_id, str(e))
+        
         raise
+
+
+def _store_scraped_data(page_id: str, report: Dict[str, Any]):
+    """Store comprehensive scraped data in ScanPage record."""
+    # Import all related models
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            # Store metadata
+            metadata = report.get("metadata", {})
+            page.page_title = metadata.get("title", "")[:512]
+            
+            # Store performance metrics
+            performance = report.get("performance", {})
+            page.ttfb_ms = performance.get("ttfb_ms")
+            page.load_time_ms = performance.get("page_load_ms")
+            
+            # Store HTTP status
+            page.http_status = 200
+            
+            # Store scraped timestamp
+            page.scanned_at = datetime.utcnow()
+            
+            # TODO: Store full report as JSON in scan_results_path or separate field
+            # For now, we'll let the extraction and analysis phases use this data
+            
+            db.commit()
+            logger.info(f"Stored scraped data for page {page_id}")
+    except Exception as e:
+        logger.error(f"Error storing scraped data for page {page_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _store_scraping_error(page_id: str, error_message: str):
+    """Store scraping error in ScanPage record."""
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            page.http_status = 500
+            # Store error in a field if available, or log it
+            db.commit()
+    except Exception as e:
+        logger.error(f"Error storing scraping error for page {page_id}: {e}")
+    finally:
+        db.close()
 
 
 # =============================================================================
@@ -850,7 +907,9 @@ def run_scan_pipeline(
     job_id: str,
     url: str,
     top_n: int = 15,
-    max_pages: int = 100
+    max_pages: int = 100,
+    notification_email: Optional[str] = None,
+    user_name: Optional[str] = None
 ) -> str:
     """
     Orchestrate the full scan pipeline.
@@ -863,6 +922,8 @@ def run_scan_pipeline(
         url: Root URL to scan
         top_n: Max pages to select
         max_pages: Max pages to discover
+        notification_email: Optional email to notify on completion
+        user_name: Optional user name for email personalization
 
     Returns:
         Job ID for tracking
@@ -876,7 +937,7 @@ def run_scan_pipeline(
     workflow = chain(
         discover_pages.s(job_id, url, max_pages),
         select_pages.s(top_n=top_n, referer=url, site_title=""),
-        process_selected_pages.s(job_id),
+        process_selected_pages.s(job_id, notification_email, user_name),
     )
 
     workflow.apply_async()
@@ -891,7 +952,9 @@ def run_scan_pipeline(
 def process_selected_pages(
     self,
     selection_result: Dict[str, Any],
-    job_id: str
+    job_id: str,
+    notification_email: Optional[str] = None,
+    user_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Process all selected pages in parallel, then aggregate.
@@ -923,6 +986,39 @@ def process_selected_pages(
         page_tasks.append(page_workflow)
 
     # Chord: run all page tasks in parallel, then aggregate
-    workflow = chord(page_tasks)(aggregate_results.s(job_id))
+    # If notification email is provided, chain it after aggregation
+    aggregation_task = aggregate_results.s(job_id)
+    
+    if notification_email:
+        from app.features.scan.workers.periodic_tasks import send_scan_completion_email
+        # Chain: aggregation -> send_email
+        # Note: send_scan_completion_email takes (job_id, user_email, user_name, site_name)
+        # But here we're chaining, so it receives the result of aggregate_results as first arg
+        # We need to ignore that result or handle it. 
+        # Better approach: Use a callback that takes the result and calls the email task
+        
+        # Since send_scan_completion_email is a Celery task, we can chain it.
+        # However, aggregate_results returns a dict. send_scan_completion_email expects arguments.
+        # We'll use an immutable signature (.si) to ignore the previous result and pass explicit args
+        
+        # We need site_name. We can get it from the job or pass it down. 
+        # For simplicity, let's pass "Your Site" or fetch it in the email task.
+        # The email task already fetches the job, so it can get the site name if we pass job_id.
+        
+        # Let's update send_scan_completion_email to be more flexible or just pass arguments here.
+        # We'll pass site_name="Your Site" for now, or fetch it.
+        
+        final_workflow = chain(
+            aggregation_task,
+            send_scan_completion_email.si(
+                job_id=job_id, 
+                user_email=notification_email, 
+                user_name=user_name or "User",
+                site_name="Your Site" # The task can fetch the real name if needed
+            )
+        )
+        workflow = chord(page_tasks)(final_workflow)
+    else:
+        workflow = chord(page_tasks)(aggregation_task)
 
     return {"job_id": job_id, "pages_queued": len(selected_pages)}

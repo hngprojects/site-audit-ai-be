@@ -50,6 +50,9 @@ def create_celery_app() -> Celery:
             # Orchestrator tasks
             "app.features.scan.workers.tasks.run_scan_pipeline": {"queue": "scan.orchestration"},
             "app.features.scan.workers.tasks.process_selected_pages": {"queue": "scan.orchestration"},
+            # Periodic tasks go to default celery queue
+            "app.features.scan.workers.periodic_tasks.check_and_trigger_periodic_scans": {"queue": "celery"},
+            "app.features.scan.workers.periodic_tasks.send_scan_completion_email": {"queue": "celery"},
         },
         
         # Define queues
@@ -73,8 +76,17 @@ def create_celery_app() -> Celery:
         # Retry settings
         task_acks_late=True,  # Acknowledge after task completes
         task_reject_on_worker_lost=True,  # Requeue if worker dies
+        
+        # Celery Beat schedule for periodic tasks
+        beat_schedule={
+            "check-periodic-scans": {
+                "task": "app.features.scan.workers.periodic_tasks.check_and_trigger_periodic_scans",
+                "schedule": 3600.0,  # Run every hour (3600 seconds)
+            },
+        },
     )
     
+
     # Auto-discover tasks in the workers module
     celery_app.autodiscover_tasks(["app.features.scan.workers"])
     

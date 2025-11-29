@@ -43,16 +43,13 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken"
             )
         
-        otp = generate_otp()
-        otp_expiry = datetime.utcnow() + timedelta(minutes=10) 
+       
         
         new_user = User(
             email=request.email.lower(),
             username=request.username.lower(),
             password_hash=hash_password(request.password),
-            verification_otp=otp,
-            otp_expires_at=otp_expiry,
-            is_email_verified=False,
+            is_email_verified=True,
         )
 
         try:

@@ -14,3 +14,6 @@ local/
 logs/
 alembic/versions
 site_audit_ai_be.egg-info/
+
+celerybeat-schedule*
+celerybeat.pid

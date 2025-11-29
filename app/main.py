@@ -19,7 +19,6 @@ app = FastAPI(
     title="Site Audit AI API", description="API for website auditing and analysis", version="1.0.0"
 )
 
-
 # Root endpoint for basic info
 @app.get("/", tags=["Info"])
 def root():
@@ -30,7 +29,6 @@ def root():
         "docs_url": "/docs",
         "api_base": "/api/v1",
     }
-
 
 app.add_middleware(
     CORSMiddleware,

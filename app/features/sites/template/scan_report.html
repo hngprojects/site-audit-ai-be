@@ -1,0 +1,62 @@
+{% extends "base_email.html" %}
+
+{% block title %}Scan Report for {{ site_name }} - Sitelytics{% endblock %}
+
+{% block content %}
+<h1 style="color: #111111; font-size: 28px;">Hi {{ first_name }},</h1>
+
+<p>Your periodic scan for <strong>{{ site_name }}</strong> has completed! Here's a summary of the results:</p>
+
+<div class="highlight-box" style="text-align: center;">
+    <h2 style="color: #FF5722; font-size: 48px; margin: 10px 0;">{{ score_overall }}/100</h2>
+    <p style="color: #555; font-size: 18px; margin: 5px 0;">Overall Site Score</p>
+</div>
+
+<div class="list-box">
+    <h3 style="color: #333; margin-bottom: 15px;">Category Scores</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 8px 0; color: #555;">SEO</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #111;">{{ score_seo }}/100</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Accessibility</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #111;">{{ score_accessibility }}/100</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Performance</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #111;">{{ score_performance }}/100</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Design</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #111;">{{ score_design }}/100</td>
+        </tr>
+    </table>
+</div>
+
+<div class="list-box">
+    <h3 style="color: #333; margin-bottom: 15px;">Issues Found</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Critical Issues</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #FF5722;">{{ critical_issues }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Warnings</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #FFA500;">{{ warnings }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; color: #555;">Total Issues</td>
+            <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #111;">{{ total_issues }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="text-center">
+    <a href="{{ dashboard_url }}" class="btn">View Full Report</a>
+</div>
+
+<p style="margin-top: 30px; color: #888; font-size: 14px;">
+    This is an automated periodic scan report. You can manage your scan frequency settings in your dashboard.
+</p>
+{% endblock %}
