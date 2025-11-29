@@ -322,21 +322,6 @@ def scrape_page(
         
 
         
-        result = {
-            "job_id": job_id,
-            "page_id": page_id,
-            "page_url": page_url,
-            "report": report,
-            "http_status": 200,
-            "scraped_at": report.get("scraped_at")
-        }
-        
-
-        return result
-        
-    except Exception as e:
-        logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
-        
         # Store error in database if page_id provided
         if page_id:
             _store_scraping_error(page_id, str(e))

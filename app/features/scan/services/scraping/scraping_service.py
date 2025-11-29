@@ -89,6 +89,17 @@ class ScrapingService:
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
             
+            # Additional wait for JavaScript-rendered content (SPAs)
+            # Wait for body to have meaningful content or a specific element
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 100 or len(d.find_elements(By.TAG_NAME, "h1")) > 0
+                )
+                logger.info("JavaScript content detected and loaded")
+            except TimeoutException:
+                # If body still has minimal content after 10 seconds, log warning but continue
+                logger.warning(f"Page body has minimal content after JavaScript wait: {url}")
+            
             load_time = (time.time() - start_time) * 1000  # Convert to ms
             logger.info(f"Page loaded in {load_time:.2f}ms")
             
@@ -699,6 +710,7 @@ class ScrapingService:
             "accessibility": data.get("accessibility", {}),
             "design": data.get("design", {}),
             "text_content": data.get("text_content", {}),
+            "content_preview": data.get("html", ""),  # Include raw HTML for extractor
             "summary": {
                 "total_issues": 0,
                 "critical_issues": [],
@@ -749,7 +761,8 @@ class ScrapingService:
                 "performance": self.extract_performance_metrics(driver),
                 "accessibility": self.extract_accessibility(driver),
                 "design": self.extract_design_signals(driver),
-                "text_content": self.extract_text_content(driver)
+                "text_content": self.extract_text_content(driver),
+                "html": driver.page_source  # Capture raw HTML
             }
             
             # Compile final report

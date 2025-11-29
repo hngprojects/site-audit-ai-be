@@ -36,11 +36,14 @@ async def test_extraction(
         GET /scan/scraping/extract-test?url=https://example.com
     """
     try:
+        scraper = None
         driver = None
 
         try:
             page_url = str(url)
-            driver = ScrapingService.load_page(page_url)
+            # Initialize scraping service
+            scraper = ScrapingService(headless=True, timeout=30)
+            driver = scraper.load_page(page_url)
 
             # Use the unified extract_from_html method
             # First get the HTML
@@ -49,9 +52,15 @@ async def test_extraction(
             # Extract all data using the standardized method
             extracted_data = ExtractorService.extract_from_html(html, page_url)
             
+            # Add HTML preview for debugging
+            response_data = extracted_data
+            if isinstance(response_data, dict):
+                response_data["debug_html_preview"] = html[:1000]  # First 1000 chars
+                response_data["debug_html_length"] = len(html)
+            
             return api_response(
                 message=f"Successfully extracted data from {page_url}",
-                data=extracted_data
+                data=response_data
             )
         except Exception as e:
             return api_response(
