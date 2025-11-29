@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class PageDiscoveryService:
     
     @staticmethod
-    def discover_pages(url: str, max_pages: int = 100) -> List[str]:
+    def discover_pages(url: str, max_pages: int = 1) -> List[str]:
         # Create temp directory for Chrome user data to avoid DevToolsActivePort issues
         temp_dir = tempfile.mkdtemp()
         
