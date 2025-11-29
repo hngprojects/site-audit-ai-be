@@ -6,6 +6,14 @@ from selenium.webdriver.chrome.service import Service
 from typing import Dict, Any
 import tempfile
 import os
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from typing import Dict, Any
+import tempfile
+import os
 
 # Cache ChromeDriver path to avoid repeated downloads
 _CHROMEDRIVER_PATH = None
@@ -62,6 +70,31 @@ class ScrapingService:
         driver.set_page_load_timeout(timeout)
         try:
             driver.get(url)
+            
+            # Wait for JavaScript to render content
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.common.by import By
+            
+            # Wait for document.readyState to be complete
+            WebDriverWait(driver, timeout).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+            
+            # Wait for body to have content (handling SPAs)
+            try:
+                WebDriverWait(driver, timeout).until(
+                    lambda d: len(d.find_element(By.TAG_NAME, "body").text.strip()) > 0
+                )
+            except:
+                # If body is empty, check for common main content containers
+                try:
+                    WebDriverWait(driver, timeout).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "main, article, #app, #root, .content"))
+                    )
+                except:
+                    pass # Proceed even if specific content isn't found, we tried our best
+            
             return driver  # caller is responsible for driver.quit()
         except (TimeoutException, WebDriverException):
             driver.quit()
