@@ -109,7 +109,7 @@ async def scrape_pages(
         scraped_pages = []
         for page_url in data.pages:
             try:
-                result = ScrapingService.scrape_page(page_url, timeout=30)
+                result = ScrapingService.scrape_page(page_url, timeout=60)
                 scraped_pages.append(result)
             except Exception as e:
                 # Log error but continue with other pages
