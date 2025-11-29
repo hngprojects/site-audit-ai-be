@@ -31,27 +31,29 @@ class ShareMessageService:
         if not template:
             return {"message": "", "referralLink": referral_link}
 
-        message = self._replace_placeholders(template.message, user_data.dict(), referral_link)  # type: ignore
+        message = self._replace_placeholders(template.message, user_data, referral_link)  # type: ignore
 
         return {"message": message, "referralLink": referral_link}
 
-    def _replace_placeholders(self, template: str, user_data: dict, referral_link: str) -> str:
+    def _replace_placeholders(self, template: str, user_data, referral_link: str) -> str:
         """
         Replace placeholders in template with actual user data.
         """
-        username = user_data.get("username") or user_data.get("first_name", "")
+        # username = user_data.get("username") or user_data.get("first_name", "")
+        username = user_data.username or user_data.first_name or ""
 
         replacements = {
             "{referral_link}": referral_link,
-            "{first_name}": user_data.get("first_name", ""),
-            "{last_name}": user_data.get("last_name", ""),
-            "{email}": user_data.get("email", ""),
+            "{first_name}": user_data.first_name,
+            "{last_name}": user_data.last_name,
+            "{email}": user_data.email,
             "{username}": username,
             "{site_name}": "Sitelytics",
         }
 
         message = template
         for placeholder, value in replacements.items():
-            message = message.replace(placeholder, value)
+            if value is not None:
+                message = message.replace(placeholder, value)
 
         return message
