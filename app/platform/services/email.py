@@ -34,8 +34,11 @@ def send_email(to_email: str, subject: str, body: str):
         except Exception as e:
             logger.error(f"Email relay failed: {str(e)}")
             logger.info("Attempting direct SMTP as fallback...")
-            send_email_direct_smtp(to_email, subject, body)
-            raise
+            try:
+                send_email_direct_smtp(to_email, subject, body)
+            except Exception as smtp_e:
+                logger.error(f"SMTP fallback also failed: {str(smtp_e)}")
+                raise smtp_e
     else:
         logger.warning("Email relay not configured, attempting direct SMTP")
         send_email_direct_smtp(to_email, subject, body)
