@@ -718,6 +718,16 @@ def _create_scan_issues(
                     # Map icon to severity
                     severity_str = _map_icon_to_severity(icon)
                     
+                    # Calculate impact score based on severity
+                    severity_impact_scores = {
+                        "critical": 15.0,
+                        "high": 10.0,
+                        "medium": 5.0,
+                        "low": 2.0,
+                        "info": 1.0
+                    }
+                    impact_score = severity_impact_scores.get(severity_str, 5.0)
+                    
                     # Generate business impact message based on category and severity
                     business_impact = _generate_business_impact(issue_category, severity_str, title)
                     
@@ -736,7 +746,7 @@ def _create_scan_issues(
                         recommendation=None,  # Not provided by current LLM response
                         element_selector=None,  # Not provided by current LLM response
                         element_html=None,  # Not provided by current LLM response
-                        impact_score=None,  # Not provided by current LLM response
+                        impact_score=impact_score,  # Calculated based on severity
                         affected_elements_count=1,  # Default to 1, can be enhanced later
                         business_impact=business_impact,
                         resources=resources,

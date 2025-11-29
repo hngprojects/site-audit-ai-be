@@ -521,9 +521,9 @@ async def get_scan_results(
                 "scan_duration": scan_duration,
                 "pages_analyzed": job.pages_llm_analyzed or 0,
                 "issues": issue_summaries,
-                "links": {
+                "_links": {
                     "self": f"/api/v1/scan/{job_id}/results",
-                    "status": f"/api/v1/scan/{job_id}",
+                    "status": f"/api/v1/scan/{job_id}/status",
                     "issues": f"/api/v1/scan/{job_id}/issues"
                 },
                 # Keep legacy structure for backward compatibility
