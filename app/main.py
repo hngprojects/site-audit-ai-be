@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api_routers.v1 import api_router
 from app.features.health.routes.health import router as health_router
 from app.features.waitlist.routes.waitlist import router as waitlist_router
+from app.platform.exceptions import add_exception_handlers
 
 # Configure logging to show INFO level messages
 logging.basicConfig(
@@ -36,6 +37,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+add_exception_handlers(app)
 
 # Create static directory if it doesn't exist
 static_dir = Path("static")

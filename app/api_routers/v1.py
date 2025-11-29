@@ -11,7 +11,7 @@ from app.features.referral.routes.referral_links import router as referral_links
 from app.features.health.routes.health import router as health_router
 from app.features.waitlist.routes.waitlist import router as waitlist_router
 
-api_router = APIRouter(prefix="/api/v1")
+
 # Scan feature routes
 from app.features.scan.routes.scan import router as scan_main_router
 from app.features.scan.routes.discovery import router as scan_discovery_router
@@ -21,6 +21,7 @@ from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
 from app.features.request_form.routes.request_route import router as request_form_router
 
+api_router = APIRouter()
 
 from app.features.support.routes.email_support import router as support_router
 from app.features.support.routes.contact_us import router as contact_router
