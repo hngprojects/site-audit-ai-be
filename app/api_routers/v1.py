@@ -27,6 +27,8 @@ from app.features.support.routes.email_support import router as support_router
 from app.features.support.routes.contact_us import router as contact_router
 from app.features.notifications.routes.notifications import router as notifications_router
 
+from app.features.admin.routes import router as admin_router
+
 
 
 # Register all feature routes
@@ -53,3 +55,4 @@ api_router.include_router(scan_analysis_router)
 api_router.include_router(scan_pages_router)
 api_router.include_router(contact_router)
 api_router.include_router(notifications_router)
+api_router.include_router(admin_router)
