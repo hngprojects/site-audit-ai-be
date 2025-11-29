@@ -105,11 +105,20 @@ async def scrape_pages(
         ScrapingResponse with scraped page data
     """
     try:
-        # Initialize scraping service
-        scraper = ScrapingService(headless=True, timeout=30)
+        # Scrape all pages using static method
+        scraped_pages = []
+        for page_url in data.pages:
+            try:
+                result = ScrapingService.scrape_page(page_url, timeout=30)
+                scraped_pages.append(result)
+            except Exception as e:
+                # Log error but continue with other pages
+                scraped_pages.append({
+                    "url": page_url,
+                    "success": False,
+                    "error": str(e)
+                })
         
-        # Scrape all pages
-        scraped_pages = scraper.scrape_multiple_pages(data.pages)
         
         # TODO: Store scraped data in ScanPage records
         # - Save HTML content, metadata, and extracted data

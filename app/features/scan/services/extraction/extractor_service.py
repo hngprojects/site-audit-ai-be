@@ -432,22 +432,9 @@ class ExtractorService:
         
         # Load HTML in Selenium to use existing extraction methods
         driver = None
-        scraper = None
         try:
-            # Create a scraper instance to get a properly configured driver
-            scraper = ScrapingService(headless=True, timeout=30)
-            
-            # Initialize driver with Chrome options
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-            
-            chrome_options = Options()
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            
-            driver = webdriver.Chrome(options=chrome_options)
+            # Use ScrapingService's build_driver static method to get a properly configured driver
+            driver = ScrapingService.build_driver()
             driver.get("data:text/html;charset=utf-8," + html)
             
             # Extract all data using existing methods

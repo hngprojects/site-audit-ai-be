@@ -29,9 +29,8 @@ class TestScrapingExtractionIntegration:
         driver = None
         
         try:
-            # Step 1: Initialize scraping service and load page
-            scraper = ScrapingService(headless=True, timeout=30)
-            driver = scraper.load_page("https://example.com")
+            # Step 1: Load page using static method
+            driver = ScrapingService.load_page("https://example.com", timeout=30)
             
             # Step 2: Capture HTML
             html = driver.page_source
