@@ -70,28 +70,35 @@ def format_issue_summary(issue: ScanIssue) -> Dict[str, Any]:
     Format a ScanIssue object as an IssueSummary dict for API response.
     
     Args:
-        issue: ScanIssue database object
+        issue: ScanIssue database object (already loaded)
         
     Returns:
         Dictionary matching IssueSummary schema
     """
-    # Get page URL from relationship
-    page_url = issue.scan_page.page_url if issue.scan_page else "Unknown"
+    # Get page URL from relationship (already eager loaded)
+    page_url = "Unknown"
+    if issue.scan_page:
+        # Access page_url without triggering async loader
+        page_url = issue.scan_page.__dict__.get('page_url', 'Unknown')
     
     # Use description as short_description (truncate if too long)
-    short_desc = issue.description
+    short_desc = issue.__dict__.get('description', '')
     if len(short_desc) > 200:
         short_desc = short_desc[:197] + "..."
     
+    # Access enums via __dict__ to avoid async issues
+    category_obj = issue.__dict__.get('category')
+    severity_obj = issue.__dict__.get('severity')
+    
     return {
-        "id": issue.id,
-        "title": issue.title,
-        "category": issue.category.value if isinstance(issue.category, IssueCategory) else issue.category,
-        "severity": issue.severity.value if isinstance(issue.severity, IssueSeverity) else issue.severity,
-        "score_impact": issue.impact_score,
+        "id": issue.__dict__.get('id'),
+        "title": issue.__dict__.get('title'),
+        "category": category_obj.value if isinstance(category_obj, IssueCategory) else str(category_obj),
+        "severity": severity_obj.value if isinstance(severity_obj, IssueSeverity) else str(severity_obj),
+        "score_impact": issue.__dict__.get('impact_score'),
         "page_url": page_url,
         "short_description": short_desc,
-        "affected_elements_count": issue.affected_elements_count or 0
+        "affected_elements_count": issue.__dict__.get('affected_elements_count') or 0
     }
 
 
@@ -105,44 +112,55 @@ def format_issue_detail(issue: ScanIssue) -> Dict[str, Any]:
     Returns:
         Dictionary matching IssueDetail schema
     """
-    # Get page and job info from relationships
-    page_url = issue.scan_page.page_url if issue.scan_page else "Unknown"
-    page_id = issue.scan_page_id
-    job_id = issue.scan_job_id
+    # Get page and job info from relationships (already eager loaded)
+    page_url = "Unknown"
+    if issue.scan_page:
+        # Access page_url without triggering async loader
+        page_url = issue.scan_page.__dict__.get('page_url', 'Unknown')
+    page_id = issue.__dict__.get('scan_page_id')
+    job_id = issue.__dict__.get('scan_job_id')
     
     # Format affected elements
     affected_elements = []
-    if issue.element_selector or issue.element_html:
+    element_selector = issue.__dict__.get('element_selector')
+    element_html = issue.__dict__.get('element_html')
+    if element_selector or element_html:
         affected_elements.append({
-            "selector": issue.element_selector,
-            "html": issue.element_html
+            "selector": element_selector,
+            "html": element_html
         })
     
     # Parse resources from JSON
     resources = []
-    if issue.resources:
-        if isinstance(issue.resources, list):
-            resources = issue.resources
-        elif isinstance(issue.resources, dict):
-            resources = [issue.resources]
+    resources_data = issue.__dict__.get('resources')
+    if resources_data:
+        if isinstance(resources_data, list):
+            resources = resources_data
+        elif isinstance(resources_data, dict):
+            resources = [resources_data]
+    
+    # Access enums via __dict__
+    category_obj = issue.__dict__.get('category')
+    severity_obj = issue.__dict__.get('severity')
+    created_at = issue.__dict__.get('created_at')
     
     return {
-        "id": issue.id,
-        "title": issue.title,
-        "category": issue.category.value if isinstance(issue.category, IssueCategory) else issue.category,
-        "severity": issue.severity.value if isinstance(issue.severity, IssueSeverity) else issue.severity,
-        "description": issue.description,
-        "what_this_means": issue.what_this_means,
-        "recommendation": issue.recommendation,
-        "score_impact": issue.impact_score,
+        "id": issue.__dict__.get('id'),
+        "title": issue.__dict__.get('title'),
+        "category": category_obj.value if isinstance(category_obj, IssueCategory) else str(category_obj),
+        "severity": severity_obj.value if isinstance(severity_obj, IssueSeverity) else str(severity_obj),
+        "description": issue.__dict__.get('description'),
+        "what_this_means": issue.__dict__.get('what_this_means'),
+        "recommendation": issue.__dict__.get('recommendation'),
+        "score_impact": issue.__dict__.get('impact_score'),
         "page_url": page_url,
         "page_id": page_id,
         "job_id": job_id,
-        "business_impact": issue.business_impact,
-        "affected_elements_count": issue.affected_elements_count or 0,
+        "business_impact": issue.__dict__.get('business_impact'),
+        "affected_elements_count": issue.__dict__.get('affected_elements_count') or 0,
         "affected_elements": affected_elements,
         "resources": resources,
-        "created_at": issue.created_at.isoformat() if issue.created_at else None
+        "created_at": created_at.isoformat() if created_at else None
     }
 
 
@@ -151,7 +169,7 @@ def count_issues_by_severity(issues: List[ScanIssue]) -> Dict[str, int]:
     Count issues by severity level.
     
     Args:
-        issues: List of ScanIssue objects
+        issues: List of ScanIssue objects (already loaded)
         
     Returns:
         Dictionary with counts: {critical: int, warning: int, info: int}
@@ -163,7 +181,12 @@ def count_issues_by_severity(issues: List[ScanIssue]) -> Dict[str, int]:
     }
     
     for issue in issues:
-        severity = issue.severity.value if isinstance(issue.severity, IssueSeverity) else issue.severity
+        # Access via __dict__ to avoid triggering async loader
+        severity_obj = issue.__dict__.get('severity')
+        if severity_obj is None:
+            continue
+            
+        severity = severity_obj.value if isinstance(severity_obj, IssueSeverity) else str(severity_obj)
         
         if severity == "critical":
             counts["critical"] += 1

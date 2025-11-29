@@ -441,7 +441,8 @@ async def get_scan_results(
     """
     try:
         # Query ScanJob and verify completed
-        job_query = select(ScanJob).where(ScanJob.id == job_id)
+        from sqlalchemy.orm import joinedload
+        job_query = select(ScanJob).where(ScanJob.id == job_id).options(joinedload(ScanJob.site))
         result = await db.execute(job_query)
         job = result.scalar_one_or_none()
         
@@ -495,8 +496,10 @@ async def get_scan_results(
             duration = job.completed_at - job.queued_at
             scan_duration = int(duration.total_seconds())
         
-        # Get site URL from job relationship
-        site_url = job.site.root_url if job.site else "Unknown"
+        # Get site URL from job relationship (already eager loaded, access via __dict__)
+        site_url = "Unknown"
+        if job.site:
+            site_url = job.site.__dict__.get('root_url', 'Unknown')
         
         return api_response(
             data={
