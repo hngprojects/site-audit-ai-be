@@ -3,14 +3,12 @@ import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
-import google.generativeai as genai
+from openai import OpenAI
 import json
 
 from app.platform.config import settings
 
 logger = logging.getLogger(__name__)
-
-GOOGLE_GEMINI_API_KEY = settings.GOOGLE_GEMINI_API_KEY
 
 class Problem(BaseModel):
     icon: str = Field(description="warning or alert icon type")
@@ -262,30 +260,81 @@ class PageAnalyzerService:
     @staticmethod
     def _call_llm(prompt: str) -> PageAnalysisResult:
         """
-        Call Gemini API with structured output.
+        Call OpenRouter API with structured output.
         Includes error handling for API failures.
         """
         try:
-            genai.configure(api_key=GOOGLE_GEMINI_API_KEY)
-            model = genai.GenerativeModel('gemini-2.5-flash-lite')
-
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    response_mime_type="application/json",
-                    response_schema=PageAnalysisResult
-                )
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.OPENROUTER_API_KEY
             )
+            
+            # Add JSON schema instruction to the prompt
+            schema_prompt = f"""{prompt}
 
-            print(f"Gemini Response: {response.text}")
+You MUST respond with ONLY valid JSON matching this exact structure:
+{{
+  "url": "string",
+  "overall_score": number (0-100),
+  "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
+  "ux_score": number (0-100),
+  "ux_title": "string",
+  "ux_impact_message": "string",
+  "ux_impact_score": number (0-100),
+  "ux_business_benefits": ["string", ...],
+  "ux_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...],
+  "performance_score": number (0-100),
+  "performance_title": "string",
+  "performance_impact_message": "string",
+  "performance_impact_score": number (0-100),
+  "performance_business_benefits": ["string", ...],
+  "performance_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...],
+  "seo_score": number (0-100),
+  "seo_title": "string",
+  "seo_impact_message": "string",
+  "seo_impact_score": number (0-100),
+  "seo_business_benefits": ["string", ...],
+  "seo_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...]
+}}
+
+Do not include any text before or after the JSON. Only output valid JSON."""
+
+            completion = client.chat.completions.create(
+                extra_headers={
+                    "HTTP-Referer": "https://sitemate-ai.com",
+                    "X-Title": "SiteMate AI",
+                },
+                model="z-ai/glm-4.5-air:free",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a web auditing expert. Always respond with valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": schema_prompt
+                    }
+                ],
+                temperature=0.7
+            )
+            
+            response_text = completion.choices[0].message.content or ""
+            print(f"OpenRouter Response: {response_text}")
             
             # Try to parse JSON - handle malformed responses
             try:
-                result_data = json.loads(response.text)
+                result_data = json.loads(response_text)
             except json.JSONDecodeError as json_err:
                 logger.error(f"JSON parse error: {json_err}")
                 # Try to extract valid JSON by cleaning the response
-                cleaned_text = response.text.strip()
+                cleaned_text = response_text.strip()
+                # Remove markdown code blocks if present
+                if cleaned_text.startswith('```'):
+                    cleaned_text = cleaned_text.split('\n', 1)[1] if '\n' in cleaned_text else cleaned_text
+                    if cleaned_text.endswith('```'):
+                        cleaned_text = cleaned_text.rsplit('\n', 1)[0] if '\n' in cleaned_text else cleaned_text
+                    cleaned_text = cleaned_text.replace('```json', '').replace('```', '').strip()
+                
                 # If it starts with { and ends with }, try to find the last valid }
                 if cleaned_text.startswith('{'):
                     # Find the last occurrence of } and truncate there
@@ -308,11 +357,11 @@ class PageAnalyzerService:
             
             result = PageAnalysisResult(**result_data)
 
-            logger.info(f"Gemini API analysis completed for {result.url}")
+            logger.info(f"OpenRouter API analysis completed for {result.url}")
             return result
 
         except Exception as e:
-            logger.error(f"Gemini API call failed: {str(e)}")
+            logger.error(f"OpenRouter API call failed: {str(e)}")
             raise
     
     @staticmethod

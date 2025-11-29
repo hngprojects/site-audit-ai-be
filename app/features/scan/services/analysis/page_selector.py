@@ -3,7 +3,6 @@ import re
 import logging
 from typing import List
 from openai import OpenAI
-import google.generativeai as genai
 
 from app.platform.config import settings
 
@@ -87,10 +86,6 @@ class PageSelectorService:
         site_title: str
     ) -> List[str]:
         """Call LLM to select important pages."""
-        # Configure Gemini API
-        genai.configure(api_key=settings.GOOGLE_GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.5-flash-lite') 
-        
         # Prepare prompt
         prompt_template = load_prompt_template()
         prompt = prompt_template.format(
@@ -98,33 +93,28 @@ class PageSelectorService:
             urls="\n".join(pages)
         )
         
-        # Call Gemini API
-        response = model.generate_content(prompt)
-        text = response.text
+        # Call OpenRouter API
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=settings.OPENROUTER_API_KEY
+        )
         
-        # ===== OLD OpenRouter Implementation (Commented Out) =====
-        # client = OpenAI(
-        #     base_url="https://openrouter.ai/api/v1",
-        #     api_key=settings.OPENROUTER_API_KEY
-        # )
-        # 
-        # completion = client.chat.completions.create(
-        #     extra_headers={
-        #         "HTTP-Referer": referer,
-        #         "X-Title": site_title,
-        #     },
-        #     extra_body={},
-        #     model="z-ai/glm-4.5-air:free",
-        #     messages=[
-        #         {
-        #             "role": "user",
-        #             "content": prompt
-        #         }
-        #     ]
-        # )
-        # 
-        # text = completion.choices[0].message.content or ""
-        # =========================================================
+        completion = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": referer,
+                "X-Title": site_title,
+            },
+            extra_body={},
+            model="z-ai/glm-4.5-air:free",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+        
+        text = completion.choices[0].message.content or ""
         
         # Extract URLs from response using regex (more robust than line splitting)
         found_urls = PageSelectorService.URL_PATTERN.findall(text)
