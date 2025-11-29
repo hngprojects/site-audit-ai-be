@@ -6,6 +6,9 @@ from fastapi import HTTPException, status
 from app.features.referral.models.referral_link import ReferralLink, ReferralClick
 from app.features.waitlist.utils.referral_code_generator import generate_referral_code
 from app.platform.config import settings
+from app.platform.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ReferralLinkService:
@@ -43,7 +46,15 @@ class ReferralLinkService:
             total_clicks=0
         )
         self.db.add(link)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except Exception as exc:
+            logger.exception(f"Failed to create referral link for user {user_id}", exc_info=exc)
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not generate referral link at this time."
+            )
         
         return self._build_referral_url(referral_code)
     
@@ -75,7 +86,15 @@ class ReferralLinkService:
         link.total_clicks += 1
         
         self.db.add(click)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except Exception as exc:
+            logger.exception(f"Failed to track click for referral code {ref_code}", exc_info=exc)
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not track referral click at this time."
+            )
     
     async def get_stats(self, ref_code: str) -> dict:
         """
