@@ -40,7 +40,7 @@ class ScrapingService:
     
     
     @staticmethod
-    def scrape_page(url: str, timeout: int = 15) -> Dict[str, Any]:
+    def scrape_page(url: str, timeout: int = 5) -> Dict[str, Any]:
         """
         Scrape a page and return serializable data (for Celery tasks).
         Driver is automatically closed after scraping.
