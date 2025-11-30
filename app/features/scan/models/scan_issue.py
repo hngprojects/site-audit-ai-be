@@ -48,9 +48,6 @@ class ScanIssue(BaseModel):
     element_selector = Column(String(512), nullable=True)  # CSS selector
     element_html = Column(Text, nullable=True)  # Snippet of problematic HTML
     
-    # Impact assessment
-    impact_score = Column(Float, nullable=True)  # 0.0-10.0
-    
     # Constraints
     __table_args__ = (
         Index('idx_scan_issues_category', 'category'),
