@@ -260,7 +260,6 @@ async def start_scan_async(
             db.add(site)
             await db.flush() 
         
-        # Create ScanJob with queued status
         
         scan_job = ScanJob(
             user_id=user_id,
