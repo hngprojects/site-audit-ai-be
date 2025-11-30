@@ -31,7 +31,8 @@ async def submit_request_form(
     submission = await service.create_request(
         user_id=payload.user_id,
         job_id=payload.job_id,
-        selected_category=payload.selected_category,
+        issues=payload.issues,
+        additional_notes=payload.additional_notes,
     )
 
     logger.info(
@@ -40,26 +41,23 @@ async def submit_request_form(
             "request_id": submission.request_id,
             "user_id": submission.user_id,
             "job_id": submission.job_id,
-            "website": str(payload.website),
-            "user_email": user_email,
+            "issues": payload.issues,
         },
     )
 
-    background_tasks.add_task(service.send_notification, payload.website, user_email, user_name)
+    background_tasks.add_task(service.send_notification, submission.request_id, user_email, user_name)
 
     return api_response(
         message="Request submitted successfully",
         data={
             "request_id": submission.request_id,
-            "user_email": user_email,
-            "website": str(payload.website),
             "submission": RequestFormResponse.model_validate(submission),
         },
         status_code=status.HTTP_201_CREATED,
     )
 
 
-@router.get("/user/{user_id}")
+@router.get("/user/{user_id}", status_code=status.HTTP_200_OK)
 async def list_requests_for_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -69,10 +67,11 @@ async def list_requests_for_user(
     return api_response(
         message="Requests retrieved",
         data=[RequestFormResponse.model_validate(req) for req in requests],
+        status_code=status.HTTP_200_OK
     )
 
 
-@router.patch("/{request_id}")
+@router.patch("/{request_id}", status_code=status.HTTP_200_OK)
 async def update_request(
     request_id: str,
     payload: RequestFormUpdate,
@@ -81,12 +80,13 @@ async def update_request(
     service = RequestFormService(db)
     updated = await service.update_request(
         request_id,
-        payload.selected_category,
+        payload.model_dump(exclude_none=True),
     )
 
     return api_response(
         message="Request updated",
         data=RequestFormResponse.model_validate(updated),
+        status_code=status.HTTP_200_OK
     )
 
 
@@ -104,7 +104,7 @@ async def delete_request(
     )
 
 
-@router.get("/{request_id}")
+@router.get("/{request_id}", status_code=status.HTTP_200_OK)
 async def get_request_form(
     request_id: str,
     db: AsyncSession = Depends(get_db),
@@ -125,7 +125,7 @@ async def get_request_form(
     )
 
 
-@router.get("/{request_id}/status")
+@router.get("/{request_id}/status", status_code=status.HTTP_200_OK)
 async def get_request_status(
     request_id: str,
     db: AsyncSession = Depends(get_db),
@@ -147,7 +147,7 @@ async def get_request_status(
     )
 
 
-@router.patch("/{request_id}/status")
+@router.patch("/{request_id}/status", status_code=status.HTTP_200_OK)
 async def update_request_status(
     request_id: str,
     payload: RequestFormStatusUpdate,
@@ -158,4 +158,5 @@ async def update_request_status(
     return api_response(
         message="Request status updated",
         data=RequestFormStatusResponse.model_validate(updated),
+        status_code=status.HTTP_200_OK
     )

@@ -6,7 +6,6 @@ from app.features.request_form.models.request_form import RequestForm, RequestSt
 from app.platform.logger import get_logger
 from app.platform.services.email import send_email
 from jinja2 import Environment, FileSystemLoader, ChoiceLoader
-from app.platform.config import settings
 from pathlib import Path
 from app.features.auth.models.user import User
 
@@ -28,12 +27,13 @@ class RequestFormService:
         self,
         user_id: str,
         job_id: str,
-        selected_category: list[str],
+        issues: list[str],
+        additional_notes: str | None,
     ) -> RequestForm:
-        if not selected_category:
+        if not issues:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one category must be selected.",
+                detail="At least one issue must be selected.",
             )
 
         await self.get_user_details(user_id)  # validate user exists
@@ -41,7 +41,8 @@ class RequestFormService:
         submission = RequestForm(
             user_id=user_id,
             job_id=job_id,
-            selected_category=selected_category,
+            issues=issues,
+            additional_notes=additional_notes,
             status=RequestStatus.PENDING,
         )
         self.db.add(submission)
@@ -67,17 +68,17 @@ class RequestFormService:
         result = await self.db.execute(select(RequestForm).where(RequestForm.user_id == user_id))
         return result.scalars().all()
     
-    async def update_request(self, request_id: str, selected_category: list[str]) -> RequestForm:
-        if not selected_category:
+    async def update_request(self, request_id: str, payload: dict) -> RequestForm:
+        if "issues" in payload and payload["issues"] == []:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one category must be selected.",
+                detail="At least one issue must be selected.",
             )
 
         stmt = (
             update(RequestForm)
             .where(RequestForm.request_id == request_id)
-            .values(selected_category=selected_category)
+            .values(**payload)
             .returning(RequestForm)
         )
         result = await self.db.execute(stmt)
@@ -109,7 +110,7 @@ class RequestFormService:
         await self.db.commit()
     
 
-    async def send_notification(self, website, user_email, username) -> None:
+    async def send_notification(self, request_id, user_email, username) -> None:
         support_templates = Path(__file__).resolve().parent.parent / "template"
         base_template = Path(__file__).resolve().parent.parent.parent / "auth" / "template"
 
@@ -123,10 +124,8 @@ class RequestFormService:
         template = env.get_template("request_form_email.html")
         
         html_content = template.render({
-            "website" : website,
+            "request_id" : request_id,
             "username": username
             })  
 
-
-        to_email = user_email
-        send_email(user_email, f"New Ticket for {website}", html_content)
+        send_email(user_email, f"New Ticket for {request_id}", html_content)
