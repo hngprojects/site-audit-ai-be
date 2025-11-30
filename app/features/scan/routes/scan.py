@@ -23,6 +23,13 @@ from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
 from app.features.scan.services.orchestration.history import get_user_scan_history
+from app.features.scan.services.issue import (
+    get_issue_by_id,
+    format_issue_detail,
+    count_issues_by_severity,
+    format_issue_summary,
+    get_issues_for_job
+)
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -422,21 +429,26 @@ async def get_scan_results(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get the final results of a completed scan.
+    Get the final results of a completed scan with issues.
+    
+    Returns comprehensive scan results including:
+    - Overall and category scores
+    - Issue summaries with details
+    - HATEOAS links for navigation
     
     Only returns data if scan status is 'completed'.
-    Returns aggregated issues, scores, and page-level results.
     
     Args:
         job_id: The scan job ID
         db: Database session
         
     Returns:
-        ScanResultsResponse with all findings
+        ScanResultsResponse with all findings and issues
     """
     try:
         # Query ScanJob and verify completed
-        job_query = select(ScanJob).where(ScanJob.id == job_id)
+        from sqlalchemy.orm import joinedload
+        job_query = select(ScanJob).where(ScanJob.id == job_id).options(joinedload(ScanJob.site))
         result = await db.execute(job_query)
         job = result.scalar_one_or_none()
         
@@ -475,10 +487,52 @@ async def get_scan_results(
             for page in all_pages if page.is_selected_by_llm
         ]
         
+        # Fetch all issues for this job
+        issues = await get_issues_for_job(db, job_id)
+        
+        # Format issues as summaries
+        issue_summaries = [format_issue_summary(issue) for issue in issues]
+        
+        # Count issues by severity
+        severity_counts = count_issues_by_severity(issues)
+        
+        # Calculate scan duration
+        scan_duration = None
+        if job.completed_at and job.queued_at:
+            duration = job.completed_at - job.queued_at
+            scan_duration = int(duration.total_seconds())
+        
+        # Get site URL from job relationship (already eager loaded, access via __dict__)
+        site_url = "Unknown"
+        if job.site:
+            site_url = job.site.__dict__.get('root_url', 'Unknown')
+        
         return api_response(
             data={
                 "job_id": job_id,
-                "status": job.status,
+                "status": job.status.value,
+                "url": site_url,
+                "overall_score": job.score_overall or 0,
+                "score_breakdown": {
+                    "seo": job.score_seo or 0,
+                    "accessibility": job.score_accessibility or 0,
+                    "performance": job.score_performance or 0,
+                    "design": job.score_design or 0
+                },
+                "total_issues": len(issues),
+                "critical_issues": severity_counts["critical"],
+                "warning_issues": severity_counts["warning"],
+                "info_issues": severity_counts["info"],
+                "scanned_at": job.completed_at.isoformat() if job.completed_at else None,
+                "scan_duration": scan_duration,
+                "pages_analyzed": job.pages_llm_analyzed or 0,
+                "issues": issue_summaries,
+                "_links": {
+                    "self": f"/api/v1/scan/{job_id}/results",
+                    "status": f"/api/v1/scan/{job_id}/status",
+                    "issues": f"/api/v1/scan/{job_id}/issues"
+                },
+                # Keep legacy structure for backward compatibility
                 "results": {
                     "score_overall": job.score_overall or 0,
                     "score_seo": job.score_seo or 0,
@@ -502,6 +556,57 @@ async def get_scan_results(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"Error fetching scan results: {str(e)}",
             data={}
+        )
+
+
+@router.get("/issues/{issue_id}")
+async def get_issue_detail(
+    issue_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get detailed information about a specific issue.
+    
+    Returns comprehensive issue details including:
+    - Full description and recommendations
+    - Business impact explanation
+    - Affected elements
+    - Helpful resources/documentation links
+    
+    Args:
+        issue_id: The issue ID
+        db: Database session
+        
+    Returns:
+        IssueDetail with all information about the issue
+    """
+    
+    try:
+        # Fetch issue by ID
+        issue = await get_issue_by_id(db, issue_id)
+        
+        if not issue:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Issue {issue_id} not found"
+            )
+        
+        # Format as detailed response
+        issue_detail = format_issue_detail(issue)
+        
+        return api_response(
+            data=issue_detail,
+            message="Issue details retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching issue details: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching issue details: {str(e)}"
         )
 
 

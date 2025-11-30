@@ -22,9 +22,7 @@ Organized by responsibility for optimal efficiency:
 
 4. analysis/ - LLM integration
    - page_selector.py: LLM Call #1 - Select important pages
-   - page_analyzer.py: LLM Call #2 - Score and find issues with methods like: analyze_accesibility(), analyze_seo(), analyze_performance() etc.
-   
-   # Leave these for now, we'd hop on a huddle call later to discuss.
+   - page_analyzer.py: LLM Call #2 - Score and find issues with methods like: analyze_accesibility(), analyze_seo(), analyze_performance() etc. 
 
 # 5. orchestration/ - Job coordination
 #    - job_coordinator.py: Main orchestration logic
@@ -34,5 +32,9 @@ Organized by responsibility for optimal efficiency:
 # 6. storage/ - Filesystem operations
 #    - artifact_storage.py: Save HTML, screenshots, DOM
 #    - job_storage.py: Job folder structure
-# """
+
+7. issue/ - Issue management and formatting
+   - issue_service.py: Fetch and format scan issues for API responses
+
+"""
 # Note: Some service modules are marked TODO and need implementation.
