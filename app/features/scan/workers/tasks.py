@@ -281,8 +281,17 @@ def scrape_page(
     page_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Scrape HTML content for a single page using ScrapingService.
-    Returns serializable data that can be passed to extract_data task.
+    Scrape and extract comprehensive data for a single page using Selenium.
+    
+    Extracts:
+    - Metadata (title, description, meta tags)
+    - Headings hierarchy (h1-h6)
+    - Images (src, alt, dimensions)
+    - Links (internal, external)
+    - Performance metrics (TTFB, load time)
+    - Accessibility features (ARIA, semantic HTML)
+    - Design signals (colors, fonts, spacing)
+    - Text content (word count, readability)
     
     Args:
         job_id: The scan job ID
@@ -290,45 +299,93 @@ def scrape_page(
         page_id: Optional page record ID
 
     Returns:
-        Dict with scraped HTML and metadata (fully serializable)
+        Dict with comprehensive scraped data
     """
     from app.features.scan.services.scraping.scraping_service import ScrapingService
     
     logger.info(f"[{job_id}] Scraping page: {page_url}")
+    
+
 
     try:
-        # Use improved scrape_page method that returns serializable data
-        scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
+        # Initialize scraping service
+        scraper = ScrapingService(headless=True, timeout=30)
         
-        if not scrape_result["success"]:
-            logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
-            raise Exception(scrape_result.get("error", "Unknown scraping error"))
+        # Scrape page and extract all data
+        report = scraper.scrape_page(page_url)
         
-        # Store basic scraping info in database
-        if page_id and scrape_result["html"]:
-            _update_page_scrape_data(
-                page_id,
-                scrape_result["html"],
-                scrape_result["page_title"],
-                scrape_result["content_length"]
-            )
+        # Store scraped data in database if page_id provided
+        if page_id:
+            _store_scraped_data(page_id, report)
         
-        result = {
-            "job_id": job_id,
-            "page_id": page_id,
-            "page_url": page_url,
-            "html": scrape_result["html"],
-            "page_title": scrape_result["page_title"],
-            "content_length": scrape_result["content_length"],
-            "current_url": scrape_result.get("current_url", page_url)
-        }
+        logger.info(f"[{job_id}] Successfully scraped {page_url}")
         
-        logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
-        return result
+
         
-    except Exception as e:
-        logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
+        # Store error in database if page_id provided
+        if page_id:
+            _store_scraping_error(page_id, str(e))
+        
         raise
+
+
+def _store_scraped_data(page_id: str, report: Dict[str, Any]):
+    """Store comprehensive scraped data in ScanPage record."""
+    # Import all related models
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            # Store metadata
+            metadata = report.get("metadata", {})
+            page.page_title = metadata.get("title", "")[:512]
+            
+            # Store performance metrics
+            performance = report.get("performance", {})
+            page.ttfb_ms = performance.get("ttfb_ms")
+            page.load_time_ms = performance.get("page_load_ms")
+            
+            # Store HTTP status
+            page.http_status = 200
+            
+            # Store scraped timestamp
+            page.scanned_at = datetime.utcnow()
+            
+            # TODO: Store full report as JSON in scan_results_path or separate field
+            # For now, we'll let the extraction and analysis phases use this data
+            
+            db.commit()
+            logger.info(f"Stored scraped data for page {page_id}")
+    except Exception as e:
+        logger.error(f"Error storing scraped data for page {page_id}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _store_scraping_error(page_id: str, error_message: str):
+    """Store scraping error in ScanPage record."""
+    from app.features.auth.models.user import User  # noqa: F401
+    from app.features.sites.models.site import Site  # noqa: F401
+    from app.features.scan.models.scan_job import ScanJob  # noqa: F401
+    from app.features.scan.models.scan_page import ScanPage
+    
+    db = get_sync_db()
+    try:
+        page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
+        if page:
+            page.http_status = 500
+            # Store error in a field if available, or log it
+            db.commit()
+    except Exception as e:
+        logger.error(f"Error storing scraping error for page {page_id}: {e}")
+    finally:
+        db.close()
 
 
 # =============================================================================
