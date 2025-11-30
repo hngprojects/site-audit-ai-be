@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import Depends
 from datetime import datetime
 from urllib.parse import urlparse
+from typing import List, Optional
 import hashlib
 import logging
 
@@ -12,13 +14,16 @@ from app.features.scan.schemas.scan import (
     ScanStartRequest, 
     ScanStartResponse,
     ScanStatusResponse,
-    ScanResultsResponse
+    ScanResultsResponse,
+    ScanHistoryItem
 )
+from app.features.auth.routes.auth import get_current_user
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
+from app.features.scan.services.orchestration.history import get_user_scan_history
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -31,7 +36,8 @@ router = APIRouter(prefix="/scan", tags=["scan"])
 async def start_scan(
     data: ScanStartRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ):
     """
     Start a complete website scan (SYNCHRONOUS - for testing).
@@ -42,6 +48,8 @@ async def start_scan(
     3. Returns results immediately
     
     Use /start-async for production async workflow.
+    
+    Supports both authenticated and anonymous users.
         
     Returns:
         ScanStartResponse with job_id and results summary
@@ -49,35 +57,54 @@ async def start_scan(
     try:
         url_str = str(data.url)
         parsed = urlparse(url_str)
-        domain = parsed.netloc
         
-        normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+        # Extract user_id from token if authenticated
+        user_id = None
+        if credentials:
+            try:
+                from app.features.auth.routes.auth import decode_access_token
+                payload = decode_access_token(credentials.credentials)
+                user_id = payload.get("sub")
+            except Exception as e:
+                pass  # If token is invalid, treat as anonymous
         
-        # Check if Site exists, create if not
-        site_query = select(Site).where(
-            Site.root_url == url_str,
-            Site.user_id == None 
-        )
+        # Fallback to request body user_id if not authenticated
+        if not user_id:
+            user_id = data.user_id
+        
+        # Generate device_id for anonymous users (needed for both Site and ScanJob)
+        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        
+        # Check if Site exists for this user (or anonymous), create if not
+        if user_id:
+            # For authenticated users, check for their site
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            # For anonymous users, check for anonymous site by device_id
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
         
         if not site:
             site = Site(
-                user_id=None,
+                user_id=user_id,
+                device_id=device_id,  # Include device_id for anonymous users
                 root_url=url_str,
-                root_url_normalized=normalized_url,
-                domain=domain,
                 total_scans=0
             )
             db.add(site)
             await db.flush() 
         
         # Create ScanJob
-        # Generate device_id for anonymous scans. Tests
-        device_id = None if data.user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
         scan_job = ScanJob(
-            user_id=data.user_id,  # Set if authenticated
+            user_id=user_id,  # Set if authenticated
             device_id=device_id,  # Set for anonymous scans
             site_id=site.id,
             status="discovering",
@@ -91,7 +118,7 @@ async def start_scan(
         discovery_service = PageDiscoveryService()
         discovered_pages = discovery_service.discover_pages(
             url=url_str,
-            max_pages=100
+            max_pages=1
         )
         
         scan_job.pages_discovered = len(discovered_pages)
@@ -118,11 +145,10 @@ async def start_scan(
             pages=discovered_pages,
             top_n=data.top_n,
             referer=url_str,
-            site_title=domain
         )
         
         scan_job.pages_selected = len(selected_urls)
-        scan_job.status = ScanJobStatus.completed  # No scraping/analysis yet
+        scan_job.status = ScanJobStatus.completed 
         scan_job.completed_at = datetime.utcnow()
         
         
@@ -163,7 +189,8 @@ async def start_scan(
 @router.post("/start-async", response_model=ScanStartResponse)
 async def start_scan_async(
     data: ScanStartRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ):
     """
     Start a complete website scan (ASYNC - for production).
@@ -179,6 +206,8 @@ async def start_scan_async(
     5. Analysis (LLM scores each page)
     6. Aggregation (combine into final scores)
     
+    Supports both authenticated and anonymous users.
+    
     Returns:
         ScanStartResponse with job_id for tracking
     """
@@ -187,34 +216,54 @@ async def start_scan_async(
     try:
         url_str = str(data.url)
         parsed = urlparse(url_str)
-        domain = parsed.netloc
         
-        normalized_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+        # Extract user_id from token if authenticated
+        user_id = None
+        if credentials:
+            try:
+                from app.features.auth.routes.auth import decode_access_token
+                payload = decode_access_token(credentials.credentials)
+                user_id = payload.get("sub")
+            except Exception as e:
+                pass  # If token is invalid, treat as anonymous
         
-        # Check if Site exists, create if not
-        site_query = select(Site).where(
-            Site.root_url == url_str,
-            Site.user_id == None 
-        )
+        # Fallback to request body user_id if not authenticated
+        if not user_id:
+            user_id = data.user_id
+        
+        # Generate device_id for anonymous users (needed for both Site and ScanJob)
+        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        
+        # Check if Site exists for this user (or anonymous), create if not
+        if user_id:
+            # For authenticated users, check for their site
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            # For anonymous users, check for anonymous site by device_id
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
         
         if not site:
             site = Site(
-                user_id=None,
+                user_id=user_id,
+                device_id=device_id,
                 root_url=url_str,
-                root_url_normalized=normalized_url,
-                domain=domain,
                 total_scans=0
             )
             db.add(site)
             await db.flush() 
         
         # Create ScanJob with queued status
-        device_id = None if data.user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
         scan_job = ScanJob(
-            user_id=data.user_id,
+            user_id=user_id,
             device_id=device_id,
             site_id=site.id,
             status="queued",
@@ -229,7 +278,7 @@ async def start_scan_async(
             job_id=scan_job.id,
             url=url_str,
             top_n=data.top_n,
-            max_pages=100
+            max_pages=1
         )
         
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")
@@ -250,6 +299,30 @@ async def start_scan_async(
             message=f"Error starting scan: {str(e)}",
             data={}
         )
+
+
+@router.get("/history", response_model=List[ScanHistoryItem])
+async def get_scan_history(
+    limit: int = 10,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """ 
+    Get scan history for the authenticated user.
+    
+    Args:
+        limit: Number of recent scans to return
+        current_user: The authenticated user
+        db: Database session
+        
+    Returns:
+        List of ScanHistoryItem with summary of past scans
+    """
+    
+    logger.info(f"User {current_user.id} fetching scan history (Limit: {limit})")
+    
+    scans = await get_user_scan_history(user_id=current_user.id, db=db, limit=limit)
+    return scans
 
 
 @router.get("/{job_id}/status", response_model=ScanStatusResponse)

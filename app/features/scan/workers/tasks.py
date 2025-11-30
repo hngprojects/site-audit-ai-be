@@ -60,7 +60,7 @@ def discover_pages(
     self,
     job_id: str,
     url: str,
-    max_pages: int = 100
+    max_pages: int = 1
 ) -> Dict[str, Any]:
     """
     Discover all pages on a website.
@@ -167,7 +167,7 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
 def select_pages(
     self,
     discovery_result: Dict[str, Any],
-    top_n: int = 15,
+    top_n: int = 5,
     referer: str = "",
     site_title: str = ""
 ) -> Dict[str, Any]:
@@ -854,8 +854,10 @@ def run_scan_pipeline(
     self,
     job_id: str,
     url: str,
-    top_n: int = 15,
-    max_pages: int = 100
+    top_n: int = 5,
+    max_pages: int = 1,
+    notification_email: Optional[str] = None,
+    user_name: Optional[str] = None
 ) -> str:
     """
     Orchestrate the full scan pipeline.
@@ -868,6 +870,8 @@ def run_scan_pipeline(
         url: Root URL to scan
         top_n: Max pages to select
         max_pages: Max pages to discover
+        notification_email: Optional email to notify on completion
+        user_name: Optional user name for email personalization
 
     Returns:
         Job ID for tracking
@@ -881,7 +885,7 @@ def run_scan_pipeline(
     workflow = chain(
         discover_pages.s(job_id, url, max_pages),
         select_pages.s(top_n=top_n, referer=url, site_title=""),
-        process_selected_pages.s(job_id),
+        process_selected_pages.s(job_id, notification_email, user_name),
     )
 
     workflow.apply_async()
@@ -896,7 +900,9 @@ def run_scan_pipeline(
 def process_selected_pages(
     self,
     selection_result: Dict[str, Any],
-    job_id: str
+    job_id: str,
+    notification_email: Optional[str] = None,
+    user_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Process all selected pages in parallel, then aggregate.
@@ -928,6 +934,39 @@ def process_selected_pages(
         page_tasks.append(page_workflow)
 
     # Chord: run all page tasks in parallel, then aggregate
-    workflow = chord(page_tasks)(aggregate_results.s(job_id))
+    # If notification email is provided, chain it after aggregation
+    aggregation_task = aggregate_results.s(job_id)
+    
+    if notification_email:
+        from app.features.scan.workers.periodic_tasks import send_scan_completion_email
+        # Chain: aggregation -> send_email
+        # Note: send_scan_completion_email takes (job_id, user_email, user_name, site_name)
+        # But here we're chaining, so it receives the result of aggregate_results as first arg
+        # We need to ignore that result or handle it. 
+        # Better approach: Use a callback that takes the result and calls the email task
+        
+        # Since send_scan_completion_email is a Celery task, we can chain it.
+        # However, aggregate_results returns a dict. send_scan_completion_email expects arguments.
+        # We'll use an immutable signature (.si) to ignore the previous result and pass explicit args
+        
+        # We need site_name. We can get it from the job or pass it down. 
+        # For simplicity, let's pass "Your Site" or fetch it in the email task.
+        # The email task already fetches the job, so it can get the site name if we pass job_id.
+        
+        # Let's update send_scan_completion_email to be more flexible or just pass arguments here.
+        # We'll pass site_name="Your Site" for now, or fetch it.
+        
+        final_workflow = chain(
+            aggregation_task,
+            send_scan_completion_email.si(
+                job_id=job_id, 
+                user_email=notification_email, 
+                user_name=user_name or "User",
+                site_name="Your Site" # The task can fetch the real name if needed
+            )
+        )
+        workflow = chord(page_tasks)(final_workflow)
+    else:
+        workflow = chord(page_tasks)(aggregation_task)
 
     return {"job_id": job_id, "pages_queued": len(selected_pages)}

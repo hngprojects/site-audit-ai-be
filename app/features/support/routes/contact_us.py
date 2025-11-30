@@ -17,19 +17,22 @@ async def contact_us(
     background_tasks: BackgroundTasks, request: ContactUsRequest, db: AsyncSession = Depends(get_db)
 ):
     """
-    Contact us form submission
-    - Creates a support ticket in the database
-    - Sends data to webhook
-    - Sends email notification to admin
+    Unified contact/message form submission.
+    
+    Handles both:
+    - **Contact Us**: fullname, phone, email, message
+    - **Send a Message**: fullname, email, message (phone is optional)
+    
+    Creates a support ticket in the database, sends data to webhook,
+    and sends email notification to admin.
     """
 
     ticket_service = TicketService(db)
     ticket = await ticket_service.create_ticket(
         email=request.email,
+        message=request.message,
         full_name=request.full_name,
         phone_number=request.phone_number,
-        subject=f"Contact Form: {request.message[:50]}...",
-        message=request.message,
         source="web" if request.page else "mobile",
     )
 

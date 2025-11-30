@@ -15,6 +15,14 @@ class SiteStatus(enum.Enum):
     deleted = "deleted"
 
 
+class ScanFrequency(enum.Enum):
+    """Periodic scan frequency options"""
+    disabled = "disabled"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
+
+
 class Site(BaseModel):
     """
     Site model with flexible ownership — user_id takes priority over device_id.
@@ -34,7 +42,7 @@ class Site(BaseModel):
 
     user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True) 
     device_id = Column(String, index=True, nullable=True)  # Can coexist with user_id
-    root_url = Column(String, index=True, nullable=False)  # Multiple users can have same site in portfolios, nless mark wants us to make it unique per user
+    root_url = Column(String, index=True, nullable=False)
     display_name = Column(String, nullable=True)
     favicon_url = Column(String, nullable=True)
     status = Column(Enum(SiteStatus), default=SiteStatus.active, nullable=True)
@@ -45,6 +53,12 @@ class Site(BaseModel):
     
     # Portfolio management flags (only for auth users)
     is_portfolio_site = Column(Boolean, default=False, nullable=False)  # True = user actively managing this site
+
+    # Periodic scanning settings
+    scan_frequency = Column(Enum(ScanFrequency), default=ScanFrequency.disabled, nullable=False)
+    scan_frequency_enabled = Column(Boolean, default=False, nullable=False)  # Quick toggle on/off
+    next_scheduled_scan = Column(DateTime, nullable=True)  # When the next periodic scan should run
+    last_periodic_scan_at = Column(DateTime, nullable=True)  # Last time a periodic scan was triggered
 
     user = relationship("User", back_populates="sites")
 

@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: self-hosted
+    runs-on:
+        - site-audit
     env:
       DATABASE_URL: ${{ secrets.CI_DB }}
     steps:

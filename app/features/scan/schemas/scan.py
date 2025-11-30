@@ -5,7 +5,7 @@ Request and response models for the scan API endpoints.
 """
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, HttpUrl
-
+from datetime import datetime
 
 # ============================================================================
 # Main Orchestration Schemas
@@ -14,14 +14,14 @@ from pydantic import BaseModel, HttpUrl
 class ScanStartRequest(BaseModel):
     """Request to start a complete scan."""
     url: HttpUrl
-    top_n: int = 15
+    top_n: int = 5
     user_id: Optional[str] = None  # For authenticated users
     
     class Config:
         json_schema_extra = {
             "example": {
                 "url": "https://example.com",
-                "top_n": 15
+                "top_n": 5
             }
         }
 
@@ -53,6 +53,26 @@ class ScanResultsResponse(BaseModel):
     status: str
     results: Dict[str, Any]
 
+class ScanHistoryItem(BaseModel):
+    """Schema for a single item in the user's scan history."""
+    id: str
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    site: Dict[str, Any]
+    
+    class Config:
+        from_attributes = True
+        
+    @property
+    def job_id(self) -> str:
+        """Alias for id to maintain backward compatibility."""
+        return self.id
+    
+    @property
+    def url(self) -> str:
+        """Extract URL from the site relationship."""
+        return self.site.get('root_url', 'Unknown') if isinstance(self.site, dict) else getattr(self.site, 'root_url', 'Unknown')
 
 # ============================================================================
 # Phase 1: Discovery Schemas
@@ -99,7 +119,7 @@ class DiscoveryResponse(BaseModel):
 class SelectionRequest(BaseModel):
     """Request for page selection phase."""
     pages: List[str]
-    top_n: int = 15
+    top_n: int = 5
     job_id: Optional[str] = None
     referer: Optional[str] = None
     site_title: Optional[str] = None
@@ -108,7 +128,7 @@ class SelectionRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "pages": ["https://example.com", "https://example.com/about"],
-                "top_n": 15,
+                "top_n": 5,
                 "job_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
