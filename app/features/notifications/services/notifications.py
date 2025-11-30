@@ -53,9 +53,13 @@ class NotificationService:
 
         logger.info(f"Created notification for user {user_id}: {title}")
 
+        # Send email notification if enabled
         settings = await self.get_user_settings(user_id)
         if send_email_notification and bool(settings.email_enabled):
             await self._send_email_notification(user_id, title, message)
+
+        # Broadcast via WebSocket to connected clients
+        await self._send_websocket_notification(notification)
 
         return notification
 
@@ -203,3 +207,45 @@ class NotificationService:
         # TODO: push notifications
         """Send push notification to user's devices."""
         await self.push_service.send_notification()
+
+    async def _send_websocket_notification(self, notification: Notification):
+        """
+        Broadcast notification via WebSocket to all connected devices.
+
+        Args:
+            notification: The Notification object to broadcast
+        """
+        try:
+            from app.platform.websocket_manager import manager
+
+            # Serialize notification to dictionary
+            notification_data = {
+                "id": str(notification.id),
+                "user_id": str(notification.user_id),
+                "title": notification.title,
+                "message": notification.message,
+                "notification_type": notification.notification_type.value,
+                "priority": notification.priority.value,
+                "action_url": notification.action_url,
+                "is_read": notification.is_read,
+                "created_at": notification.created_at.isoformat(),
+            }
+
+            # Send to user's connected devices
+            message = {"type": "notification", "data": notification_data}
+
+            sent_count = await manager.send_personal_message(message, str(notification.user_id))
+
+            if sent_count > 0:
+                logger.info(
+                    f"WebSocket notification delivered to {sent_count} device(s) for user {notification.user_id}"
+                )
+            else:
+                logger.debug(
+                    f"User {notification.user_id} not connected. WebSocket notification skipped."
+                )
+
+        except Exception as e:
+            # Don't fail notification creation if WebSocket broadcast fails
+            logger.error(f"Failed to send WebSocket notification: {e}")
+
