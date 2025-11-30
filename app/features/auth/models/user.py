@@ -34,6 +34,7 @@ class User(BaseModel):
     last_login = Column(DateTime, nullable=True)
 
     sites = relationship("Site", back_populates="user", cascade="all, delete-orphan")
+    referral_links = relationship("ReferralLink", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email}, username={self.username})>"

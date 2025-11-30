@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Header
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from typing import Optional
 from app.features.auth.models.user import User
+
 from app.features.auth.schemas import (
     AuthResponse,
     ForgetPasswordRequest,
@@ -12,12 +13,14 @@ from app.features.auth.schemas import (
     ResendResetTokenRequest,
 )
 from app.features.auth.schemas.auth import (
-    ChangePasswordRequest,
-    LoginRequest,
     SignupRequest,
-    VerifyEmailRequest,
+    LoginRequest,
+    TokenResponse,
+    UserResponse,
+    ChangePasswordRequest,
+    VerifyEmailRequest
 )
-from app.features.auth.services.auth_service import AuthService
+from app.features.auth.services.auth_service import AuthService, send_password_reset_email
 from app.features.auth.services.email_service import (
     send_account_activation,
     send_password_reset,
