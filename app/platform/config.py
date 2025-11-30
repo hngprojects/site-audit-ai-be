@@ -1,14 +1,7 @@
 from pathlib import Path
-import os
-from dotenv import load_dotenv
-
-from pydantic_settings import BaseSettings
-from typing import Literal, Optional
 from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings
-
-load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -23,8 +16,8 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "amqp://guest:guest@localhost:5672//"
 
     # Using Redis backend for results (supports chords and avoids database complexity)
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
-
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"  
+    
     CELERY_TASK_SERIALIZER: str = "json"
     CELERY_RESULT_SERIALIZER: str = "json"
     CELERY_ACCEPT_CONTENT: str = "json"
@@ -61,12 +54,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
 
+    LANDING_PAGE_URL: str = "https://sitelytics.com"
+
     # ── Apple OAuth Configuration ───────────────────────
-    APPLE_CLIENT_ID: Optional[str] = os.getenv("APPLE_CLIENT_ID", None)
-    APPLE_TEAM_ID: Optional[str] = os.getenv("APPLE_TEAM_ID", None)
-    APPLE_KEY_ID: Optional[str] = os.getenv("APPLE_KEY_ID", None)
-    APPLE_PRIVATE_KEY_PATH: Optional[str] = os.getenv("APPLE_PRIVATE_KEY_PATH", None)
-    APPLE_REDIRECT_URI: Optional[str] = os.getenv("APPLE_REDIRECT_URI", None)
+    APPLE_CLIENT_ID: Optional[str] = None
+    APPLE_TEAM_ID: Optional[str] = None
+    APPLE_KEY_ID: Optional[str] = None
+    APPLE_PRIVATE_KEY_PATH: Optional[str] = None
+    APPLE_REDIRECT_URI: Optional[str] = None
 
 
     class Config:
