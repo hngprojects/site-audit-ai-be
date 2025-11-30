@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     MAIL_FROM_ADDRESS: str = "example@localhost"
     MAIL_FROM_NAME: str = "SiteMate AI"
     MAIL_ADMIN_EMAIL:str = "example@localhost"
+
+    EMAIL_RELAY_URL: str = ""
+    EMAIL_RELAY_API_KEY: str = ""
+    EMAIL_RELAY_TIMEOUT: int = 30
+
     GOOGLE_CLIENT_ID: str = "dummy-value"
     GOOGLE_CLIENT_ID_ANDROID: Optional[str] = None
 

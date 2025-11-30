@@ -17,6 +17,7 @@ from app.features.request_form.routes.request_route import router as request_for
 
 from app.features.support.routes.email_support import router as support_router
 from app.features.support.routes.contact_us import router as contact_router
+from app.features.notifications.routes.notifications import router as notifications_router
 
 api_router = APIRouter()
 
@@ -29,7 +30,6 @@ api_router.include_router(sites_router)
 api_router.include_router(request_form_router)
 
 
-
 # Register scan feature routes
 api_router.include_router(scan_main_router)
 api_router.include_router(scan_discovery_router)
@@ -38,3 +38,4 @@ api_router.include_router(scan_scraping_router)
 api_router.include_router(scan_analysis_router)
 api_router.include_router(scan_pages_router)
 api_router.include_router(contact_router)
+api_router.include_router(notifications_router)
