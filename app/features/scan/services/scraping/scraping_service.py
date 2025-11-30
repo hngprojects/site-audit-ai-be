@@ -23,41 +23,12 @@ class ScrapingService:
     @staticmethod
     def build_driver() -> webdriver.Chrome:
         chrome_options = Options()
-        
-        # Create temp directory for Chrome user data to avoid DevToolsActivePort issues
-        temp_dir = tempfile.mkdtemp()
-        
-        # Essential flags for headless Chrome on Linux VPS
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        
-        # Use temp directory to avoid profile conflicts
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-        
-        # Additional stability flags
-        chrome_options.add_argument("--disable-setuid-sandbox")
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--ignore-certificate-errors")
-        chrome_options.add_argument("--window-size=1920,1080")
-        
-        # Suppress unnecessary output
-        chrome_options.add_argument("--log-level=3")
-        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        
-        # Page load strategy
-        chrome_options.set_capability("pageLoadStrategy", "eager")
+        chrome_options.add_argument('--headless')  # Headless mode
+        chrome_options.add_argument('--no-sandbox')
+        driver_service = Service(executable_path='/usr/local/bin/chromedriver')  
+        driver = webdriver.Chrome(service=driver_service, options=chrome_options) 
 
-        # Use webdriver-manager with caching to avoid repeated downloads
-        global _CHROMEDRIVER_PATH
-        if _CHROMEDRIVER_PATH is None:
-            _CHROMEDRIVER_PATH = ChromeDriverManager().install()
-        
-        service = Service(_CHROMEDRIVER_PATH)
-        return webdriver.Chrome(service=service, options=chrome_options)
+        return driver
 
 
     @staticmethod
@@ -102,7 +73,7 @@ class ScrapingService:
     
     
     @staticmethod
-    def scrape_page(url: str, timeout: int = 15) -> Dict[str, Any]:
+    def scrape_page(url: str, timeout: int = 5) -> Dict[str, Any]:
         """
         Scrape a page and return serializable data (for Celery tasks).
         Driver is automatically closed after scraping.

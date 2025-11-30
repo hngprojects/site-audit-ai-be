@@ -60,7 +60,7 @@ def discover_pages(
     self,
     job_id: str,
     url: str,
-    max_pages: int = 100
+    max_pages: int = 1
 ) -> Dict[str, Any]:
     """
     Discover all pages on a website.
@@ -166,7 +166,7 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
 def select_pages(
     self,
     discovery_result: Dict[str, Any],
-    top_n: int = 15,
+    top_n: int = 5,
     referer: str = "",
     site_title: str = ""
 ) -> Dict[str, Any]:
@@ -906,8 +906,8 @@ def run_scan_pipeline(
     self,
     job_id: str,
     url: str,
-    top_n: int = 15,
-    max_pages: int = 100,
+    top_n: int = 5,
+    max_pages: int = 1,
     notification_email: Optional[str] = None,
     user_name: Optional[str] = None
 ) -> str:
