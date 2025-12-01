@@ -38,7 +38,6 @@ class ScanPage(BaseModel):
     score_seo = Column(Integer, nullable=True)
     score_accessibility = Column(Integer, nullable=True)
     score_performance = Column(Integer, nullable=True)
-    score_design = Column(Integer, nullable=True)
     
     # Detailed LLM analysis results (structured JSON from Gemini)
     analysis_details = Column(JSON, nullable=True)

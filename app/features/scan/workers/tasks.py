@@ -193,7 +193,7 @@ def _update_page_scrape_data(page_id: str, html_content: str, page_title: Option
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
     import hashlib
-    
+
     db = get_sync_db()
     try:
         page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
@@ -201,12 +201,13 @@ def _update_page_scrape_data(page_id: str, html_content: str, page_title: Option
             page.page_title = page_title
             page.content_length_bytes = content_length
             page.http_status = 200
-            
+
             # Generate content hash for caching
             if html_content:
-                content_hash = hashlib.sha256(html_content.encode('utf-8')).hexdigest()
+                content_hash = hashlib.sha256(
+                    html_content.encode('utf-8')).hexdigest()
                 page.content_hash_current = content_hash
-            
+
             db.commit()
     finally:
         db.close()
@@ -331,7 +332,7 @@ def _get_page_ids_for_urls(job_id: str, urls: List[str]) -> Dict[str, str]:
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
-    
+
     db = get_sync_db()
     try:
         url_normalized = {url.rstrip('/') for url in urls}
@@ -339,7 +340,7 @@ def _get_page_ids_for_urls(job_id: str, urls: List[str]) -> Dict[str, str]:
             ScanPage.scan_job_id == job_id,
             ScanPage.page_url_normalized.in_(url_normalized)
         ).all()
-        
+
         # Map normalized URL to page ID
         return {page.page_url: str(page.id) for page in pages}
     finally:
@@ -365,7 +366,7 @@ def scrape_page(
     """
     Scrape HTML content for a single page using ScrapingService.
     Returns serializable data that can be passed to extract_data task.
-    
+
     Args:
         job_id: The scan job ID
         page_url: URL to scrape
@@ -375,17 +376,19 @@ def scrape_page(
         Dict with scraped HTML and metadata (fully serializable)
     """
     from app.features.scan.services.scraping.scraping_service import ScrapingService
-    
+
     logger.info(f"[{job_id}] Scraping page: {page_url}")
 
     try:
         # Use improved scrape_page method that returns serializable data
         scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
-        
+
         if not scrape_result["success"]:
-            logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
-            raise Exception(scrape_result.get("error", "Unknown scraping error"))
-        
+            logger.error(
+                f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
+            raise Exception(scrape_result.get(
+                "error", "Unknown scraping error"))
+
         # Store basic scraping info in database
         if page_id and scrape_result["html"]:
             _update_page_scrape_data(
@@ -394,7 +397,7 @@ def scrape_page(
                 scrape_result["page_title"],
                 scrape_result["content_length"]
             )
-        
+
         result = {
             "job_id": job_id,
             "page_id": page_id,
@@ -404,10 +407,11 @@ def scrape_page(
             "content_length": scrape_result["content_length"],
             "current_url": scrape_result.get("current_url", page_url)
         }
-        
-        logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
+
+        logger.info(
+            f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
         return result
-        
+
     except Exception as e:
         logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
         raise
@@ -429,46 +433,47 @@ def extract_data(
 ) -> Dict[str, Any]:
     """
     Extract structured data from scraped HTML using ExtractorService.
-    
+
     Args:
         scrape_result: Output from scrape_page task containing HTML
-        
+
     Returns:
         Dict with extracted data
     """
     from app.features.scan.services.extraction.extractor_service import ExtractorService
-    
+
     job_id = scrape_result["job_id"]
     page_url = scrape_result["page_url"]
     page_id = scrape_result.get("page_id")
     html = scrape_result.get("html")
-    
+
     logger.info(f"[{job_id}] Extracting data from: {page_url}")
 
     try:
         if not html:
             raise ValueError("No HTML content provided in scrape_result")
-        
+
         # Extract all data using ExtractorService.extract_from_html
         extracted = ExtractorService.extract_from_html(html, page_url)
-        
+
         # Update database with extracted data
         if page_id:
             _update_page_extracted_data(page_id, extracted)
-        
+
         result = {
             "job_id": job_id,
             "page_id": page_id,
             "page_url": page_url,
             "extracted_data": extracted
         }
-        
+
         logger.info(f"[{job_id}] Successfully extracted data from {page_url}")
         return result
-        
+
     except Exception as e:
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
         raise
+
 
 def _update_page_extracted_data(page_id: str, extracted: Dict):
     """Update page record with extracted data for later analysis."""
@@ -476,7 +481,7 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
-    
+
     db = get_sync_db()
     try:
         page = db.query(ScanPage).filter(ScanPage.id == page_id).first()
@@ -485,11 +490,11 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
             metadata = extracted.get("metadata", {})
             if metadata.get("title"):
                 page.page_title = metadata["title"]
-            
+
             # Count issues from accessibility and metadata
             accessibility = extracted.get("accessibility", {})
             metadata_issues = len(metadata.get("issues", []))
-            
+
             # Count accessibility issues
             accessibility_issues = sum([
                 len(accessibility.get("images_missing_alt", [])),
@@ -498,11 +503,12 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
                 len(accessibility.get("links_missing_label", [])),
                 len(accessibility.get("empty_headings", []))
             ])
-            
+
             # Classify issues
             page.critical_issues_count = metadata_issues  # Metadata issues are critical
-            page.warning_issues_count = accessibility_issues  # Accessibility issues are warnings
-            
+            # Accessibility issues are warnings
+            page.warning_issues_count = accessibility_issues
+
             db.commit()
     finally:
         db.close()
@@ -510,6 +516,7 @@ def _update_page_extracted_data(page_id: str, extracted: Dict):
 # =============================================================================
 # Phase 5: Analysis (per-page, LLM)
 # =============================================================================
+
 
 @celery_app.task(
     bind=True,
@@ -529,7 +536,7 @@ def analyze_page(
     # Extract metadata from the extraction result
     page_url = extraction_result.get("page_url")
     page_id = extraction_result.get("page_id")
-    
+
     # Get the extracted data in the format PageAnalyzerService expects
     extracted_data = extraction_result.get("extracted_data", {})
 
@@ -569,40 +576,34 @@ def analyze_page(
 def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
     """
     Transform PageAnalysisResult dict to database-friendly format.
-    Maps LLM output (UX/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
+    Maps LLM output (Usability/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
 
     Args:
         analysis_result: Dict from PageAnalyzerService with nested structure:
-            {overall_score, ux: {score, ...}, performance: {score, ...}, seo: {score, ...}}
+            {overall_score, usability: {score, ...}, performance: {score, ...}, seo: {score, ...}}
 
     Returns:
         Dict with flat structure for database storage
     """
-    ux = analysis_result.get("ux", {})
+    usability = analysis_result.get("usability", {})
     performance = analysis_result.get("performance", {})
     seo = analysis_result.get("seo", {})
-    
+
     return {
         "overall_score": analysis_result.get("overall_score"),
-        # Map UX score to both accessibility and design (UX encompasses both)
-        "score_accessibility": ux.get("score"),
-        "score_design": ux.get("score"),  # For MVP, use same UX score for design
+        "score_accessibility": usability.get("score"),
         "score_performance": performance.get("score"),
         "score_seo": seo.get("score"),
-        # Keep impact scores for potential future use
-        "ux_impact_score": ux.get("impact_score"),
-        "performance_impact_score": performance.get("impact_score"),
-        "seo_impact_score": seo.get("impact_score"),
     }
 
 
 def _map_icon_to_severity(icon: str) -> str:
     """
     Map problem icon from LLM response to severity level.
-    
+
     Args:
         icon: Icon string from LLM ('alert' or 'warning')
-        
+
     Returns:
         Severity level string
     """
@@ -759,46 +760,51 @@ def _create_scan_issues(
 ) -> int:
     """
     Extract problems from detailed_analysis and create ScanIssue records.
-    
+
     Args:
         page_id: Database ID of the scanned page
         job_id: Database ID of the scan job
         detailed_analysis: Full structured analysis result from LLM
-        
+
     Returns:
         Number of issues created
     """
     from app.features.scan.models.scan_issue import ScanIssue, IssueCategory, IssueSeverity
     from app.features.scan.models.scan_job import ScanJob
     
+
     db = get_sync_db()
     issues_created = 0
     critical_count = 0  # Track high/critical severity issues
     
+
     try:
         # Extract problems from each category
         categories_map = {
-            "ux": IssueCategory.accessibility,  # UX problems map to accessibility
+            # Usability problems map to accessibility
+            "usability": IssueCategory.accessibility,
             "performance": IssueCategory.performance,
             "seo": IssueCategory.seo,
         }
-        
+
         for section_key, issue_category in categories_map.items():
             section = detailed_analysis.get(section_key, {})
             problems = section.get("problems", [])
-            
+
             for problem in problems:
                 try:
                     # Extract problem details
                     icon = problem.get("icon", "warning")
                     title = problem.get("title", "")
-                    description = problem.get("description", title)  # Fallback to title if no description
-                    
+                    # Fallback to title if no description
+                    description = problem.get("description", title)
+
                     # Skip if no title
                     if not title:
-                        logger.warning(f"Skipping problem with no title in {section_key} section")
+                        logger.warning(
+                            f"Skipping problem with no title in {section_key} section")
                         continue
-                    
+
                     # Map icon to severity
                     severity_str = _map_icon_to_severity(icon)
                     severity_enum = IssueSeverity[severity_str]
@@ -823,6 +829,7 @@ def _create_scan_issues(
                     # Get relevant resources/documentation links
                     resources = _get_issue_resources(issue_category, title)
                     
+
                     # Create ScanIssue record
                     issue = ScanIssue(
                         scan_page_id=page_id,
@@ -840,14 +847,15 @@ def _create_scan_issues(
                         business_impact=business_impact,
                         resources=resources,
                     )
-                    
+
                     db.add(issue)
                     issues_created += 1
-                    
+
                 except Exception as e:
-                    logger.error(f"Failed to create issue from problem: {e}", exc_info=True)
+                    logger.error(
+                        f"Failed to create issue from problem: {e}", exc_info=True)
                     continue
-        
+
         # Commit all issues at once
         db.commit()
         logger.info(f"Created {issues_created} ScanIssue records for page {page_id} ({critical_count} critical/high)")
@@ -866,13 +874,16 @@ def _create_scan_issues(
                     action_url=f"/scans/{job_id}/issues"
                 )
         
+        logger.info(
+            f"Created {issues_created} ScanIssue records for page {page_id}")
+
     except Exception as e:
         logger.error(f"Failed to create scan issues: {e}", exc_info=True)
         db.rollback()
         raise
     finally:
         db.close()
-    
+
     return issues_created
 
 
@@ -905,7 +916,6 @@ def _update_page_analysis(
         if page:
             page.score_overall = analysis.get("overall_score")
             page.score_accessibility = analysis.get("score_accessibility")
-            page.score_design = analysis.get("score_design")
             page.score_performance = analysis.get("score_performance")
             page.score_seo = analysis.get("score_seo")
 
@@ -914,21 +924,25 @@ def _update_page_analysis(
                 page.analysis_details = detailed_analysis
                 logger.info(f"Stored detailed_analysis for page {page_id}")
             else:
-                logger.warning(f"Page model missing 'analysis_details' column - detailed analysis not saved")
+                logger.warning(
+                    f"Page model missing 'analysis_details' column - detailed analysis not saved")
 
             page.scanned_at = datetime.utcnow()
             db.commit()
 
             logger.info(f"Updated page {page_id} with analysis scores")
-            
+
             # Create individual ScanIssue records from problems in detailed_analysis
             try:
                 # Get job_id from the page object
                 job_id = page.scan_job_id
-                issues_count = _create_scan_issues(page_id, job_id, detailed_analysis)
-                logger.info(f"Created {issues_count} issues for page {page_id}")
+                issues_count = _create_scan_issues(
+                    page_id, job_id, detailed_analysis)
+                logger.info(
+                    f"Created {issues_count} issues for page {page_id}")
             except Exception as e:
-                logger.error(f"Failed to create scan issues for page {page_id}: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to create scan issues for page {page_id}: {e}", exc_info=True)
                 # Don't fail the whole analysis if issue creation fails
         else:
             logger.warning(f"Page {page_id} not found in database")
@@ -959,7 +973,6 @@ def _update_page_scores(page_id: Optional[str], analysis: Dict):
         if page:
             page.score_overall = analysis.get("overall_score")
             page.score_accessibility = analysis.get("score_accessibility")
-            page.score_design = analysis.get("score_design")
             page.score_performance = analysis.get("score_performance")
             page.score_seo = analysis.get("score_seo")
 
@@ -985,18 +998,19 @@ def _update_page_scores(page_id: Optional[str], analysis: Dict):
 def _count_scan_issues(job_id: str) -> int:
     """
     Count total number of ScanIssue records for a job.
-    
+
     Args:
         job_id: Database ID of the scan job
-        
+
     Returns:
         Total count of issues
     """
     from app.features.scan.models.scan_issue import ScanIssue
-    
+
     db = get_sync_db()
     try:
-        count = db.query(ScanIssue).filter(ScanIssue.scan_job_id == job_id).count()
+        count = db.query(ScanIssue).filter(
+            ScanIssue.scan_job_id == job_id).count()
         logger.info(f"Found {count} total issues for job {job_id}")
         return count
     except Exception as e:
@@ -1036,7 +1050,6 @@ def aggregate_results(
                 "score_seo": 0,
                 "score_accessibility": 0,
                 "score_performance": 0,
-                "score_design": 0,
                 "total_issues": 0
             }
         else:
@@ -1048,7 +1061,6 @@ def aggregate_results(
                 "score_seo": sum(r["analysis"].get("score_seo", 0) for r in valid_results) // count if count else 0,
                 "score_accessibility": sum(r["analysis"].get("score_accessibility", 0) for r in valid_results) // count if count else 0,
                 "score_performance": sum(r["analysis"].get("score_performance", 0) for r in valid_results) // count if count else 0,
-                "score_design": sum(r["analysis"].get("score_design", 0) for r in valid_results) // count if count else 0,
                 "total_issues": _count_scan_issues(job_id),
                 "pages_analyzed": count
             }
@@ -1088,7 +1100,6 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.score_seo = scores.get("score_seo")
             job.score_accessibility = scores.get("score_accessibility")
             job.score_performance = scores.get("score_performance")
-            job.score_design = scores.get("score_design")
             job.total_issues = scores.get("total_issues", 0)
             job.pages_llm_analyzed = scores.get("pages_analyzed", 0)
             job.completed_at = datetime.utcnow()
@@ -1182,10 +1193,10 @@ def process_selected_pages(
 
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.scraping)
-    
+
     # Get page IDs from database for tracking
     page_id_map = _get_page_ids_for_urls(job_id, selected_pages)
-    
+
     # Create parallel tasks for each page
     page_tasks = []
     for page_url in selected_pages:
