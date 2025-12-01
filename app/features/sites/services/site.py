@@ -29,63 +29,148 @@ def is_valid_domain(url: str) -> bool:
     return "." in hostname and not hostname.startswith(".") and not hostname.endswith(".")
 
 
-async def create_site_for_user(db: AsyncSession, user_id: str, site_data: SiteCreate):
+async def create_site(
+    db: AsyncSession,
+    site_data: SiteCreate,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
     normalized_url = normalize_url(site_data.root_url)
-    if not is_valid_domain(normalized_url):
-        raise ValueError("Invalid domain in root_url")
+    payload_device_id = getattr(site_data, "device_id", None)
+
     new_site = Site(
         user_id=user_id,
+        device_id=device_id or payload_device_id,
         root_url=normalized_url,
         display_name=site_data.display_name,
         favicon_url=site_data.favicon_url,
-        status=site_data.status,
+        status=site_data.status or SiteStatus.active,
     )
     db.add(new_site)
     try:
         await db.commit()
+        await db.refresh(new_site)
     except IntegrityError:
         await db.rollback()
-        raise ValueError("Site with this root_url already exists for this user")
+        raise ValueError("You already have a site with this root_url")
     except Exception as e:
         await db.rollback()
         raise e
-    await db.refresh(new_site)
     return new_site
 
 
-async def soft_delete_user_site_by_id(db: AsyncSession, user_id: str, site_id: str):
+async def get_sites_for_owner(
+    db: AsyncSession,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
+    """Get all non-deleted sites belonging to the current user or device"""
+    query = select(Site).where(Site.status != SiteStatus.deleted)
+    
+    if user_id:
+        query = query.where(Site.user_id == user_id)
+    elif device_id:
+        query = query.where(Site.device_id == device_id)
+    else:
+        # Should never happen due to route dependency
+        raise HTTPException(status_code=400, detail="No ownership context provided")
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+async def get_site_by_id_for_owner(
+    db: AsyncSession,
+    site_id: str,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
+    """Get a site by ID if it belongs to the current user or device"""
+    query = select(Site).where(
+        Site.id == site_id,
+        Site.status != SiteStatus.deleted,
+    )
+    
+    if user_id:
+        query = query.where(Site.user_id == user_id)
+    elif device_id:
+        query = query.where(Site.device_id == device_id)
+    else:
+        raise HTTPException(status_code=400, detail="No ownership context provided")
+
+    result = await db.execute(query)
+    site = result.scalars().first()
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    return site
+
+
+async def soft_delete_site_by_id_for_owner(
+    db: AsyncSession,
+    site_id: str,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
+    """Soft delete a site if it belongs to the current user or device"""
     stmt = (
         update(Site)
-        .where(Site.id == site_id, Site.user_id == user_id)
+        .where(Site.id == site_id, Site.status != SiteStatus.deleted)
         .values(status=SiteStatus.deleted)
         .returning(Site)
     )
+    
+    if user_id:
+        stmt = stmt.where(Site.user_id == user_id)
+    elif device_id:
+        stmt = stmt.where(Site.device_id == device_id)
+    else:
+        raise HTTPException(status_code=400, detail="No ownership context provided")
 
     result = await db.execute(stmt)
     site = result.scalars().first()
-
-    if site is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
-
-    await db.commit()
-
-    return site
-
-
-async def get_site_by_id(db: AsyncSession, site_id: str, user_id: str):
-    # Query the database for the site, ensuring it belongs to the user
-    result = await db.execute(select(Site).where(Site.id == site_id, Site.user_id == user_id))
-    site = result.scalars().first()
     if not site:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Site not found or does not belong to the user.",
-        )
+        raise HTTPException(status_code=404, detail="Site not found")
+    await db.commit()
     return site
 
 
-async def get_all_sites_for_user(db: AsyncSession, user_id: str):
-    result = await db.execute(
-        select(Site).where(Site.user_id == user_id, Site.status != SiteStatus.deleted)
+async def update_site_scan_frequency(
+    db: AsyncSession,
+    site_id: str,
+    scan_frequency,
+    scan_frequency_enabled: bool,
+    user_id: str | None = None,
+    device_id: str | None = None,
+):
+    """Update periodic scan frequency settings for a site"""
+    from datetime import datetime, timedelta
+    from app.features.sites.models.site import ScanFrequency
+    
+    # Get the site first to verify ownership
+    site = await get_site_by_id_for_owner(
+        db=db,
+        site_id=site_id,
+        user_id=user_id,
+        device_id=device_id
     )
-    return result.scalars().all()
+    
+    # Calculate next scheduled scan time based on frequency
+    next_scheduled_scan = None
+    if scan_frequency_enabled and scan_frequency != ScanFrequency.disabled:
+        now = datetime.utcnow()
+        if scan_frequency == ScanFrequency.daily:
+            next_scheduled_scan = now + timedelta(days=1)
+        elif scan_frequency == ScanFrequency.weekly:
+            next_scheduled_scan = now + timedelta(days=7)
+        elif scan_frequency == ScanFrequency.monthly:
+            next_scheduled_scan = now + timedelta(days=30)
+    
+    # Update the site
+    site.scan_frequency = scan_frequency
+    site.scan_frequency_enabled = scan_frequency_enabled
+    site.next_scheduled_scan = next_scheduled_scan
+    
+    await db.commit()
+    await db.refresh(site)
+    return site
+

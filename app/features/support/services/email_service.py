@@ -1,11 +1,35 @@
-import os
-from datetime import datetime
-from typing import Optional
-
-from sqlalchemy import select
+import re, os
+from fastapi import HTTPException, status
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from app.platform.services.email import send_email
+from jinja2 import Environment, FileSystemLoader, ChoiceLoader
+from app.platform.config import settings
+from pathlib import Path
 
-from app.features.support.models.support_ticket import SupportTicket, TicketPriority, TicketStatus
+
+from app.features.support.models.support_ticket import (
+    SupportTicket, 
+    TicketPriority, 
+    TicketStatus, 
+    TicketCategory
+)
+
+
+PRIORITY_KEYWORDS = {
+    TicketPriority.URGENT: {"urgent", "critical", "emergency", "down"},
+    TicketPriority.HIGH: {"important", "soon", "issue", "problem"},
+}
+
+CATEGORY_KEYWORDS = {
+    TicketCategory.TECHNICAL: {"bug", "error", "crash", "broken"},
+    TicketCategory.BILLING: {"billing", "payment", "invoice"},
+    TicketCategory.ACCOUNT: {"account", "login", "password"},
+}
+
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"\b\w+\b", text.lower()))
 
 
 class TicketService:
@@ -14,128 +38,120 @@ class TicketService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    def _auto_detect_priority(self, subject: str, message: str) -> TicketPriority:
+        words = _tokenize(f"{subject} {message}")
+        for level in (TicketPriority.URGENT, TicketPriority.HIGH):
+            if words & PRIORITY_KEYWORDS[level]:
+                return level
+        return TicketPriority.MEDIUM
+
+    def _auto_categorize(self, subject: str, message: str) -> TicketCategory:
+        words = _tokenize(f"{subject} {message}")
+        for category, keywords in CATEGORY_KEYWORDS.items():
+            if words & keywords:
+                return category
+        return TicketCategory.GENERAL
+
+
     async def create_ticket(
         self,
         email: str,
-        subject: str,
         message: str,
+        subject: str | None = None,
+        full_name: str | None = None,
+        phone_number: str | None = None,
+        source: str | None = "mobile",
     ) -> SupportTicket:
-        """Create a new support ticket"""
+        """Create a new support ticket
+        
+        Args:
+            email: User's email address
+            message: The message content
+            subject: Optional subject line (auto-generated from message if not provided)
+            full_name: Optional user's full name
+            phone_number: Optional phone number
+            source: Origin of request (mobile/web/api)
+        """
+        # Auto-generate subject from message if not provided
+        if not subject:
+            # Take first 50 chars of message as subject
+            subject = f"Contact Form: {message[:50]}..." if len(message) > 50 else f"Contact Form: {message}"
 
-        # Auto-detect priority
-        priority = self._auto_detect_priority(subject, message)
+        for _ in range(2):  # one retry if unique ticket_id collides
+            ticket = SupportTicket(
+                 email=email,
+                full_name=full_name,
+                phone_number=phone_number,
+                subject=subject,
+                message=message,
+                priority=self._auto_detect_priority(subject, message),
+                status=TicketStatus.PENDING,
+                category=self._auto_categorize(subject, message),
+                source=source
+            )
+            self.db.add(ticket)
+            
+            try:
+                await self.db.commit()
+                await self.db.refresh(ticket)
+                return ticket
+            except IntegrityError:
+                await self.db.rollback()
 
-        ticket = SupportTicket(
-            ticket_id=SupportTicket.generate_ticket_id(),
-            email=email,
-            subject=subject,
-            message=message,
-            priority=TicketPriority(priority),
-            status=TicketStatus.PENDING,
-            category=self._auto_categorize(subject, message),
-            source="api",
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not create ticket after retry"
         )
+    
 
-        self.db.add(ticket)
-        await self.db.commit()
-        await self.db.refresh(ticket)
-
-        return ticket
-
-    async def get_ticket_by_id(self, ticket_id: str) -> Optional[SupportTicket]:
+    async def get_ticket_by_id(self, ticket_id: str) -> SupportTicket | None:
         """Get ticket by ticket ID"""
         result = await self.db.execute(
             select(SupportTicket).where(SupportTicket.ticket_id == ticket_id)
         )
         return result.scalar_one_or_none()
+    
 
-    async def update_status(self, ticket_id: int, status: str) -> bool:
+    async def update_status(self, ticket_id: str, new_status_value: str) -> SupportTicket:
         """Update ticket status"""
-        result = await self.db.execute(select(SupportTicket).where(SupportTicket.id == ticket_id))
-        ticket = result.scalar_one_or_none()
+        try:
+            status_enum = TicketStatus(new_status_value)
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid ticket status")
 
-        if not ticket:
-            return False
+        stmt = (
+            update(SupportTicket)
+            .where(SupportTicket.ticket_id == ticket_id)
+            .values(status=status_enum)
+            .returning(SupportTicket)
+        )
 
-        ticket.status = TicketStatus(status)
-        ticket.updated_at = datetime.utcnow()
-
-        if status == "resolved":
-            ticket.resolved_at = datetime.utcnow()
+        result = await self.db.execute(stmt)
+        ticket = result.scalars().first()
+        
+        if ticket is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
 
         await self.db.commit()
-        return True
+        return ticket
+    
 
-    def _auto_detect_priority(self, subject: str, message: str) -> str:
-        """Auto-detect priority based on content"""
-        content = (subject + " " + message).lower()
-
-        if any(word in content for word in ["urgent", "critical", "emergency", "down"]):
-            return "urgent"
-        elif any(word in content for word in ["important", "soon", "issue", "problem"]):
-            return "high"
-
-        return "medium"
-
-    def _auto_categorize(self, subject: str, message: str) -> str:
-        """Auto-categorize ticket"""
-        content = (subject + " " + message).lower()
-
-        if any(word in content for word in ["bug", "error", "crash", "broken"]):
-            return "technical"
-        elif any(word in content for word in ["billing", "payment", "invoice"]):
-            return "billing"
-        elif any(word in content for word in ["account", "login", "password"]):
-            return "account"
-
-        return "general"
+    @staticmethod
+    async def send_ticket_notification(ticket) -> None:
+        support_templates = Path(__file__).resolve().parent.parent / "template"
+        base_template = Path(__file__).resolve().parent.parent.parent / "auth" / "template"
 
 
-class EmailService:
-    """Email notification service"""
+        env = Environment(
+        loader=ChoiceLoader([
+            FileSystemLoader(str(support_templates)),
+            FileSystemLoader(str(base_template)),
+        ])
+    )
+        template = env.get_template("admin_email.html")
+        html_content = template.render(ticket=ticket)  
 
-    def __init__(self):
-        self.smtp_host = os.getenv("MAIL_HOST", "smtp.gmail.com")
-        self.smtp_port = int(os.getenv("MAIL_PORT", 587))
-        self.smtp_username = os.getenv("MAIL_USERNAME", "")
-        self.smtp_password = os.getenv("MAIL_PASSWORD", "")
-        self.admin_email = os.getenv("ADMIN_EMAIL", "admin@tokugawa.emerj.net")
 
-    async def send_ticket_notification(self, ticket: SupportTicket) -> bool:
-        """Send email notification to admin"""
-        try:
-            import smtplib
-            from email.mime.multipart import MIMEMultipart
-            from email.mime.text import MIMEText
+        to_email = settings.MAIL_ADMIN_EMAIL
+        print(settings.MAIL_ADMIN_EMAIL)
+        send_email(to_email, f"New Ticket for {ticket.ticket_id}", html_content)
 
-            msg = MIMEMultipart()
-            msg["From"] = self.smtp_username
-            msg["To"] = self.admin_email
-            msg["Subject"] = f"New Support Ticket: {ticket.ticket_id}"
-
-            body = f"""
-            New Support Ticket Received
-            
-            Ticket ID: {ticket.ticket_id}
-            From: {ticket.name} ({ticket.email})
-            Subject: {ticket.subject}
-            Priority: {ticket.priority.value}
-            
-            Message:
-            {ticket.message}
-            
-            ---
-            Tokugawa Support System
-            """
-
-            msg.attach(MIMEText(body, "plain"))
-
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_username, self.smtp_password)
-                server.send_message(msg)
-
-            return True
-        except Exception as e:
-            print(f"Email error: {e}")
-            return False
