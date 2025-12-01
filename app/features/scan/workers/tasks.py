@@ -25,6 +25,74 @@ def get_sync_db():
     return SessionLocal()
 
 
+async def _send_scan_notification_async(
+    user_id: str,
+    title: str,
+    message: str,
+    notification_type: str,
+    priority: str = "medium",
+    action_url: Optional[str] = None
+):
+    """
+    Helper to send notifications from Celery tasks (async version).
+    This is the actual async function that creates and sends the notification.
+    """
+    from app.features.notifications.services.notifications import NotificationService
+    from app.features.notifications.models.notifications import NotificationType, NotificationPriority
+    from app.platform.async_db_helper import get_async_db
+
+    async with get_async_db() as db:
+        service = NotificationService(db)
+        await service.create_notification(
+            user_id=user_id,
+            title=title,
+            message=message,
+            notification_type=getattr(NotificationType, notification_type.upper()),
+            priority=getattr(NotificationPriority, priority.upper()),
+            action_url=action_url
+        )
+
+
+def send_scan_notification(
+    user_id: str,
+    title: str,
+    message: str,
+    notification_type: str,
+    priority: str = "medium",
+    action_url: Optional[str] = None
+):
+    """
+    Helper to send notifications from Celery tasks (sync wrapper).
+    
+    This wraps the async notification creation in asyncio.run() so it can be called
+    from synchronous Celery workers.
+    
+    Args:
+        user_id: User ID to send notification to
+        title: Notification title
+        message: Notification message
+        notification_type: Type (scan_complete, scan_failed, issue_detected, etc.)
+        priority: Priority level (low, medium, high, urgent)
+        action_url: Optional URL to link to
+    """
+    import asyncio
+    
+    try:
+        # Create a new event loop and run the async function
+        asyncio.run(_send_scan_notification_async(
+            user_id=user_id,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            priority=priority,
+            action_url=action_url
+        ))
+        logger.info(f"Sent {notification_type} notification to user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send notification to user {user_id}: {e}", exc_info=True)
+        # Don't raise - notification failure shouldn't break the scan
+
+
 def update_job_status(job_id: str, status, **kwargs):
     """Update scan job status in database. Status can be string or ScanJobStatus enum."""
     # Import all related models to ensure SQLAlchemy mappers are configured
@@ -34,6 +102,7 @@ def update_job_status(job_id: str, status, **kwargs):
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
 
     db = get_sync_db()
+    job = None
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
         if job:
@@ -42,8 +111,21 @@ def update_job_status(job_id: str, status, **kwargs):
                 if hasattr(job, key):
                     setattr(job, key, value)
             db.commit()
+            
+            # NEW: Trigger scan failed notification
+            if status == ScanJobStatus.failed:
+                error_msg = kwargs.get('error_message', 'Unknown error occurred')
+                send_scan_notification(
+                    user_id=str(job.user_id),
+                    title="Scan Failed",
+                    message=f"Your website scan encountered an error: {error_msg}",
+                    notification_type="scan_failed",
+                    priority="high",
+                    action_url=f"/scans/{job_id}"
+                )
     finally:
         db.close()
+
 
 
 # Phase 1: Discovery
@@ -60,7 +142,7 @@ def discover_pages(
     self,
     job_id: str,
     url: str,
-    max_pages: int = 100
+    max_pages: int = 1
 ) -> Dict[str, Any]:
     """
     Discover all pages on a website.
@@ -166,7 +248,7 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
 def select_pages(
     self,
     discovery_result: Dict[str, Any],
-    top_n: int = 15,
+    top_n: int = 5,
     referer: str = "",
     site_title: str = ""
 ) -> Dict[str, Any]:
@@ -687,9 +769,11 @@ def _create_scan_issues(
         Number of issues created
     """
     from app.features.scan.models.scan_issue import ScanIssue, IssueCategory, IssueSeverity
+    from app.features.scan.models.scan_job import ScanJob
     
     db = get_sync_db()
     issues_created = 0
+    critical_count = 0  # Track high/critical severity issues
     
     try:
         # Extract problems from each category
@@ -717,6 +801,11 @@ def _create_scan_issues(
                     
                     # Map icon to severity
                     severity_str = _map_icon_to_severity(icon)
+                    severity_enum = IssueSeverity[severity_str]
+                    
+                    # Track critical/high issues
+                    if severity_str in ["high", "critical"]:
+                        critical_count += 1
                     
                     # Calculate impact score based on severity
                     severity_impact_scores = {
@@ -739,7 +828,7 @@ def _create_scan_issues(
                         scan_page_id=page_id,
                         scan_job_id=job_id,
                         category=issue_category,
-                        severity=IssueSeverity[severity_str],
+                        severity=severity_enum,
                         title=title[:512],  # Truncate to column limit
                         description=description,
                         what_this_means=None,  # Not provided by current LLM response
@@ -761,7 +850,21 @@ def _create_scan_issues(
         
         # Commit all issues at once
         db.commit()
-        logger.info(f"Created {issues_created} ScanIssue records for page {page_id}")
+        logger.info(f"Created {issues_created} ScanIssue records for page {page_id} ({critical_count} critical/high)")
+        
+        # NEW: Trigger critical issues notification if any high-severity issues found
+        if critical_count > 0:
+            # Get job to find user_id
+            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+            if job:
+                send_scan_notification(
+                    user_id=str(job.user_id),
+                    title=f"⚠️ {critical_count} Critical Issue{'s' if critical_count > 1 else ''} Detected",
+                    message=f"Your scan found {critical_count} critical issue{'s' if critical_count > 1 else ''} that need immediate attention.",
+                    notification_type="issue_detected",
+                    priority="urgent",
+                    action_url=f"/scans/{job_id}/issues"
+                )
         
     except Exception as e:
         logger.error(f"Failed to create scan issues: {e}", exc_info=True)
@@ -990,6 +1093,16 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.pages_llm_analyzed = scores.get("pages_analyzed", 0)
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # NEW: Trigger scan complete notification
+            send_scan_notification(
+                user_id=str(job.user_id),
+                title="Scan Complete! 🎉",
+                message=f"Your website scan finished with an overall score of {scores.get('score_overall', 0)}/100. {scores.get('total_issues', 0)} issues detected.",
+                notification_type="scan_complete",
+                priority="medium",
+                action_url=f"/scans/{job_id}"
+            )
     finally:
         db.close()
 
@@ -1006,8 +1119,8 @@ def run_scan_pipeline(
     self,
     job_id: str,
     url: str,
-    top_n: int = 15,
-    max_pages: int = 100,
+    top_n: int = 5,
+    max_pages: int = 1,
     notification_email: Optional[str] = None,
     user_name: Optional[str] = None
 ) -> str:
