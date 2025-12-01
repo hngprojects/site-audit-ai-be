@@ -4,7 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from sqlalchemy.orm import relationship
-
+from app.features.referral.models.referral_link import ReferralLink
 from app.platform.db.base import BaseModel
 
 
