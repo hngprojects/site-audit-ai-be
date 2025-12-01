@@ -18,6 +18,7 @@ from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
 from app.features.support.models.support_ticket import SupportTicket
 from app.features.sites.models.site import Site
+from app.features.sites.models.site_email import SiteEmailAssociation
 from app.features.scan.models.scan_job import ScanJob
 from app.features.scan.models.scan_page import ScanPage
 from app.features.scan.models.scan_issue import ScanIssue
