@@ -35,14 +35,12 @@ jobs:
           python3.12 -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
-
       - name: Install dependencies
         run: |
           source .venv/bin/activate
           uv add psycopg2
           uv add alembic-postgresql-enum
           uv sync
-
       - name: Debug env
         run: |
           if [ -z "$DATABASE_URL" ]; then
@@ -56,14 +54,12 @@ jobs:
         run: |
           source .venv/bin/activate
           uv run pytest
-
       - name: Generate migration revision
         run: |
           source .venv/bin/activate
           rm -rf alembic/versions/*
           mkdir -p alembic/versions
           uv run alembic revision --autogenerate -m "ci migration test"
-
       - name: Run Alembic migrations
         run: |
           source .venv/bin/activate

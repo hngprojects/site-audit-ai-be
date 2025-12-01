@@ -42,6 +42,20 @@ async def create_support_ticket(
 
     background_tasks.add_task(TicketService.send_ticket_notification, ticket)
 
+    # NEW: Send notification to user (if authenticated)
+    if hasattr(ticket, 'user_id') and ticket.user_id:
+        from app.features.notifications.services.notifications import NotificationService
+        from app.features.notifications.models.notifications import NotificationType, NotificationPriority
+        
+        notification_service = NotificationService(db)
+        await notification_service.create_notification(
+            user_id=str(ticket.user_id),
+            title="Support Ticket Created",
+            message=f"We received your support request: {request.subject}. Our team will respond soon.",
+            notification_type=NotificationType.SUPPORT_RESPONSE,
+            priority=NotificationPriority.MEDIUM,
+            action_url=f"/support/tickets/{ticket.id}"
+        )
    
     return api_response(
         message="Support ticket created successfully", 
@@ -74,6 +88,32 @@ async def update_ticket_status(
         ticket_id, 
         status_update.status
     )
+
+    # NEW: Notify user of status change
+    if hasattr(updated_ticket, 'user_id') and updated_ticket.user_id:
+        from app.features.notifications.services.notifications import NotificationService
+        from app.features.notifications.models.notifications import NotificationType, NotificationPriority
+        
+        status_messages = {
+            "IN_PROGRESS": "Your support ticket is being reviewed by our team",
+            "RESOLVED": "Your support ticket has been resolved! Check the ticket for details.",
+            "CLOSED": "Your support ticket has been closed"
+        }
+        
+        message = status_messages.get(
+            status_update.status, 
+            f"Your ticket status changed to {status_update.status}"
+        )
+        
+        notification_service = NotificationService(db)
+        await notification_service.create_notification(
+            user_id=str(updated_ticket.user_id),
+            title="Support Ticket Updated",
+            message=message,
+            notification_type=NotificationType.SUPPORT_RESPONSE,
+            priority=NotificationPriority.MEDIUM,
+            action_url=f"/support/tickets/{ticket_id}"
+        )
 
     return api_response(
         data=TicketResponse.model_validate(updated_ticket),
