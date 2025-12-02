@@ -22,10 +22,10 @@ def get_severity_from_score(score: int) -> str:
 def get_short_description(key: str, score: int) -> str:
     """Generate short description based on category and score."""
     # Determine severity level based on score
-    if score >= 80:
+    if score >= 90:
         severity_text = "excellent"
         action = "well optimized"
-    elif score >= 60:
+    elif score >= 75:
         severity_text = "good"
         action = "performing adequately"
     elif score >= 40:
@@ -37,24 +37,24 @@ def get_short_description(key: str, score: int) -> str:
     
     # Generic descriptions based on severity
     descriptions = {
-        "seo": f"Your search visibility is {severity_text} and {action}. Current score: {score}/100.",
-        "usability": f"Mobile experience is {severity_text} and {action}. Current score: {score}/100.",
-        "performance": f"Your site's loading speed is {severity_text} and {action}. Current score: {score}/100."
+        "seo": f"Your search visibility is {severity_text} and {action}.",
+        "usability": f"Mobile experience is {severity_text} and {action}.",
+        "performance": f"Your site's loading speed is {severity_text} and {action}."
     }
-    return descriptions.get(key, f"This area is {severity_text} and {action}. Current score: {score}/100.")
+    return descriptions.get(key, f"This area is {severity_text} and {action}.")
 
 def generate_summary_message(score: int) -> str:
     """Generate summary message dynamically based on score ranges."""
     if score == 100:
-        return "Your website is performing at its absolute best with a score of 100/100."
+        return "Your website is performing at its absolute best"
     elif score >= 90:
-        return f"Your website is performing excellently with a score of {score}/100. There's room to reach perfection."
+        return f"Your website is performing excellently. There's room to reach perfection."
     elif score >= 80:
-        return f"Your website is performing very well with a score of {score}/100. It can be improved further with minor optimizations."
+        return f"Your website is performing very well. It can be improved further with minor optimizations."
     elif score >= 70:
         return f"Your website has a solid score of {score}/100. It can be improved by addressing issues in a few key areas."
     elif score >= 60:
-        return f"Your website is performing adequately with a score of {score}/100. It can be significantly improved by addressing several issues."
+        return f"Your website is performing adequately. It can be significantly improved by addressing several issues."
     elif score >= 50:
         return f"Your website needs attention. With a score of {score}/100, it can be improved through several key enhancements."
     elif score >= 40:
