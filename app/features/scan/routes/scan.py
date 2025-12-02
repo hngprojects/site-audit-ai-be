@@ -23,6 +23,7 @@ from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
 from app.features.scan.services.orchestration.history import get_user_scan_history
+from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -259,7 +260,6 @@ async def start_scan_async(
             db.add(site)
             await db.flush() 
         
-        # Create ScanJob with queued status
         
         scan_job = ScanJob(
             user_id=user_id,
@@ -269,16 +269,17 @@ async def start_scan_async(
             queued_at=datetime.utcnow()
         )
         db.add(scan_job)
-        await db.commit()
-        await db.refresh(scan_job)
+        await db.flush()
         
-        # Queue the scan pipeline to Celery
-        run_scan_pipeline.delay(
+        task_result = run_scan_pipeline.delay(
             job_id=scan_job.id,
             url=url_str,
             top_n=data.top_n,
             max_pages=1
         )
+        scan_job.celery_task_id = task_result.id
+        await db.commit()
+        await db.refresh(scan_job)
         
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")
         
@@ -572,3 +573,22 @@ async def get_scan_pages(
             message=f"Error fetching scan pages: {str(e)}",
             data={}
         )
+
+@router.post("/{job_id}/stop")
+async def stop_scan(
+    job_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    success = await stop_scan_job(job_id, db)
+    if not success:
+        return api_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message=f"Scan job {job_id} not found",
+            data={}
+        )
+    return api_response(
+        data={"job_id": job_id, "status": "cancelled"},
+        message="Scan stopped successfully",
+        status_code=status.HTTP_200_OK
+    )
+
