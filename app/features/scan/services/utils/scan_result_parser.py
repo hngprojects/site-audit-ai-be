@@ -68,6 +68,7 @@ def parse_audit_report(data: Dict[str, Any]) -> Dict[str, Any]:
     """Transform audit report from detailed structure to simplified category-based structure."""
     job_id = data["job_id"]
     results = data["results"]
+    scanned_at = data['scanned_at']
     
     score_overall = results["score_overall"]
     score_seo = results.get("score_seo", 0)
@@ -106,7 +107,7 @@ def parse_audit_report(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "job_id": job_id,
         "website_score": score_overall,
-        "scan_date": datetime.now().strftime("%Y-%m-%d"),
+        "scan_date": scanned_at,
         "summary_message": generate_summary_message(score_overall),
         "categories": categories
     }

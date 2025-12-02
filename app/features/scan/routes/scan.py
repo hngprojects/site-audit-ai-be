@@ -19,6 +19,7 @@ from app.features.scan.schemas.scan import (
 from app.features.auth.routes.auth import get_current_user
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.models.scan_issue import ScanIssue
 from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
@@ -27,7 +28,7 @@ from app.features.scan.services.orchestration.history import get_user_scan_histo
 from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
-from app.features.scan.services.utils.scan_result_parser import parse_audit_report
+from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 
 logger = logging.getLogger(__name__)
 
@@ -466,25 +467,26 @@ async def get_scan_results(
                     PageAnalyzerService.flatten_issues(page.analysis_details))
 
         unparsed_result = {
-                "job_id": job_id,
-                "status": job.status,
-                "results": {
-                    "score_overall": job.score_overall or 0,
-                    "score_seo": job.score_seo or 0,
-                    "score_accessibility": job.score_accessibility or 0,
-                    "score_performance": job.score_performance or 0,
-                    "total_issues": job.total_issues,
-                    "critical_issues": job.critical_issues_count,
-                    "warnings": job.warning_issues_count,
-                    "pages_discovered": job.pages_discovered,
-                    "pages_selected": job.pages_selected,
-                    "pages_analyzed": job.pages_llm_analyzed,
-                    "issues": all_issues
-                }
+            "job_id": job_id,
+            "status": job.status,
+            "scanned_at": job.completed_at,
+            "results": {
+                "score_overall": job.score_overall or 0,
+                "score_seo": job.score_seo or 0,
+                "score_accessibility": job.score_accessibility or 0,
+                "score_performance": job.score_performance or 0,
+                "total_issues": job.total_issues,
+                "critical_issues": job.critical_issues_count,
+                "warnings": job.warning_issues_count,
+                "pages_discovered": job.pages_discovered,
+                "pages_selected": job.pages_selected,
+                "pages_analyzed": job.pages_llm_analyzed,
+                "issues": all_issues
             }
-        
+        }
+
         parsed_result = parse_audit_report(unparsed_result)
-        
+
         return api_response(
             data=parsed_result
         )
@@ -494,6 +496,65 @@ async def get_scan_results(
         return api_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             message=f"Error fetching scan results: {str(e)}",
+            data={}
+        )
+
+
+@router.get("/{job_id}/issues")
+async def get_scan_issues(job_id: str, db: AsyncSession = Depends(get_db)):
+
+    try:
+        job = await db.scalar(select(ScanJob).where(ScanJob.id == job_id))
+        if not job:
+            return api_response(status_code=404, message="Scan job not found")
+
+        if job.status != ScanJobStatus.completed:
+            return api_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                message=f"Scan is not completed yet. Current status: {job.status.value}",
+                data={"status": job.status.value}
+            )
+
+        issues = await db.scalars(
+            select(ScanIssue).where(ScanIssue.scan_job_id == job_id)
+        )
+
+        score_overall = job.score_overall or 0
+
+        return api_response(
+            data={
+                "job_id": job_id,
+                "status": job.status,
+                "scanned_at": job.completed_at,
+                "score_overall": score_overall,
+                "score_seo": job.score_seo or 0,
+                "score_accessibility": job.score_accessibility or 0,
+                "score_performance": job.score_performance or 0,
+                "summary": generate_summary_message(score_overall),
+                "issues": [
+                    {
+                        "id": issue.id,
+                        "scan_page_id": issue.scan_page_id,
+                        "scan_job_id": issue.scan_job_id,
+                        "category": issue.category.value,
+                        "severity": issue.severity.value,
+                        "title": issue.title,
+                        "description": issue.description,
+                        "recommendation": issue.recommendation,
+                        "element_selector": issue.element_selector,
+                        "element_html": issue.element_html,
+                        "created_at": issue.created_at,
+                    }
+                    for issue in issues
+                ]
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching scan issues: {e}")
+        return api_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=f"Error fetching scan issues: {str(e)}",
             data={}
         )
 

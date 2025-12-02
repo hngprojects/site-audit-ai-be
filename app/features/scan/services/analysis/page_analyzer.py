@@ -299,10 +299,8 @@ class PageAnalyzerService:
         - description: short, one-line sentence describing the issue
         - severity: low, medium, or high
         - score_impact: Positive Integer between 0-100 quantifying how this issue affects the total score
-        - affected_element: An object that contains css selector and the element html represents an element affected by this issue (if provided).
         - business_impact: short, one-line sentence explaining the impact
         - recommendation: short, one-line sentence with recommended action
-        - resources: list of items with short title and URL
 
     Use the accessibility_issues, text_content metrics, and SEO metadata to inform usability and SEO scores. Make scores realistic and actionable. Include real problems found. Ensure all text fields are concise and on a single line.
     """
@@ -328,13 +326,13 @@ You MUST respond with ONLY valid JSON matching this exact structure:
   "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
   
   "usability_score": number (0-100),
-  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
   
   "performance_score": number (0-100),
-  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
 
   "seo_score": number (0-100),
-  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
 }}
 
 Do not include any text before or after the JSON. Only output valid JSON."""
@@ -425,10 +423,6 @@ Do not include any text before or after the JSON. Only output valid JSON."""
                 if not isinstance(issue, dict):
                     continue
 
-                # Extract affected element safely
-                affected_element = issue.get("affected_element")
-                affected_element_count = 1 if affected_element else 0
-
                 unified.append(
                     {
                         "page_url": result.get("url"),
@@ -436,12 +430,9 @@ Do not include any text before or after the JSON. Only output valid JSON."""
                         "category": category,
                         "severity": issue.get("severity"),
                         "score_impact": issue.get("score_impact"),
-                        "affected_element": affected_element,
-                        "affected_element_count": 1,
                         "description": issue.get("description"),
                         "business_impact": issue.get("business_impact"),
-                        "recommendation": issue.get("recommendation"),
-                        "resources": issue.get("resources", []),
+                        "recommendation": issue.get("recommendation")
                     }
                 )
 

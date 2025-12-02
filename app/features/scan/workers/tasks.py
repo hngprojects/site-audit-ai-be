@@ -757,8 +757,7 @@ def _create_scan_issues(
                         title=title[:512],  # Truncate to column limit
                         description=description,
                         recommendation=problem.get('recommendation', ''),
-                        element_selector=problem.get('affected_element').get('selector'),
-                        element_html=problem.get('affected_element').get('html'),
+                        business_impact=problem.get('business_impact', '')
                     )
 
                     db.add(issue)
