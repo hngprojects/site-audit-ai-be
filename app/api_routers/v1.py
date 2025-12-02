@@ -30,6 +30,8 @@ from app.features.notifications.routes.websocket import router as websocket_noti
 
 
 from app.features.admin.routes import router as admin_router
+from app.features.leads.routes.lead_route import router as leads_router
+# ...
 
 
 
@@ -46,6 +48,7 @@ api_router.include_router(referral_links_router)
 api_router.include_router(health_router)
 api_router.include_router(waitlist_router)
 api_router.include_router(request_form_router)
+api_router.include_router(leads_router)
 
 
 # Register scan feature routes
