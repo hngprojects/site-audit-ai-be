@@ -1,13 +1,13 @@
+import os
+import tempfile
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
 from typing import Dict, Any
-import tempfile
-import os
+from app.platform.config import settings
 
-# Cache ChromeDriver path to avoid repeated downloads
 _CHROMEDRIVER_PATH = None
 
 
@@ -15,11 +15,16 @@ class ScrapingService:
     @staticmethod
     def build_driver() -> webdriver.Chrome:
         chrome_options = Options()
-        chrome_options.add_argument('--headless')  # Headless mode
+        chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
-        driver_service = Service(executable_path='/usr/local/bin/chromedriver')  
-        driver = webdriver.Chrome(service=driver_service, options=chrome_options) 
-
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        
+        if settings.CHROMEDRIVER_PATH:
+            driver_service = Service(executable_path=settings.CHROMEDRIVER_PATH)
+            driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+        else:
+            driver = webdriver.Chrome(options=chrome_options)
+        
         return driver
 
 

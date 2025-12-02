@@ -2,9 +2,13 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from celery import shared_task, chain, group, chord
-from celery.exceptions import Retry
-
+from celery.exceptions import Retry, Ignore
+from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.platform.celery_app import celery_app
+from app.features.auth.models.user import User 
+from app.features.sites.models.site import Site
+from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
+from app.features.scan.models.scan_page import ScanPage
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,93 @@ def get_sync_db():
     return SessionLocal()
 
 
+def check_job_cancelled(job_id: str) -> bool: 
+    db = get_sync_db()
+    try:
+        job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+        if job and job.status == ScanJobStatus.cancelled:
+            logger.info(f"[{job_id}] Job is cancelled, skipping task")
+            return True
+        return False
+    finally:
+        db.close()
+
+async def _send_scan_notification_async(
+    user_id: str,
+    title: str,
+    message: str,
+    notification_type: str,
+    priority: str = "medium",
+    action_url: Optional[str] = None
+):
+    """
+    Helper to send notifications from Celery tasks (async version).
+    This is the actual async function that creates and sends the notification.
+    """
+    from app.features.notifications.services.notifications import NotificationService
+    from app.features.notifications.models.notifications import NotificationType, NotificationPriority
+    from app.platform.async_db_helper import get_async_db
+
+    if not user_id or user_id == "None":
+        logger.info(f"Skipping notification for anonymous user (async)")
+        return
+
+    async with get_async_db() as db:
+        service = NotificationService(db)
+        await service.create_notification(
+            user_id=user_id,
+            title=title,
+            message=message,
+            notification_type=getattr(NotificationType, notification_type.upper()),
+            priority=getattr(NotificationPriority, priority.upper()),
+            action_url=action_url
+        )
+
+
+def send_scan_notification(
+    user_id: str,
+    title: str,
+    message: str,
+    notification_type: str,
+    priority: str = "medium",
+    action_url: Optional[str] = None
+):
+    """
+    Helper to send notifications from Celery tasks (sync wrapper).
+    
+    This wraps the async notification creation in asyncio.run() so it can be called
+    from synchronous Celery workers.
+    
+    Args:
+        user_id: User ID to send notification to
+        title: Notification title
+        message: Notification message
+        notification_type: Type (scan_complete, scan_failed, issue_detected, etc.)
+        priority: Priority level (low, medium, high, urgent)
+        action_url: Optional URL to link to
+    """
+    import asyncio
+
+    if not user_id or user_id == "None":
+        logger.info(f"Skipping notification for anonymous user")
+        return
+    
+    try:
+        # Create a new event loop and run the async function
+        asyncio.run(_send_scan_notification_async(
+            user_id=user_id,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            priority=priority,
+            action_url=action_url
+        ))
+        logger.info(f"Sent {notification_type} notification to user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send notification to user {user_id}: {e}", exc_info=True)
+        # Don't raise - notification failure shouldn't break the scan
+
+
 def update_job_status(job_id: str, status, **kwargs):
     """Update scan job status in database. Status can be string or ScanJobStatus enum."""
     # Import all related models to ensure SQLAlchemy mappers are configured
@@ -34,6 +125,7 @@ def update_job_status(job_id: str, status, **kwargs):
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
 
     db = get_sync_db()
+    job = None
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
         if job:
@@ -42,8 +134,21 @@ def update_job_status(job_id: str, status, **kwargs):
                 if hasattr(job, key):
                     setattr(job, key, value)
             db.commit()
+            
+            # NEW: Trigger scan failed notification
+            if status == ScanJobStatus.failed and job.user_id:
+                error_msg = kwargs.get('error_message', 'Unknown error occurred')
+                send_scan_notification(
+                    user_id=str(job.user_id),
+                    title="Scan Failed",
+                    message=f"Your website scan encountered an error: {error_msg}",
+                    notification_type="scan_failed",
+                    priority="high",
+                    action_url=f"/scans/{job_id}"
+                )
     finally:
         db.close()
+
 
 
 # Phase 1: Discovery
@@ -73,6 +178,9 @@ def discover_pages(
     Returns:
         Dict with discovered pages and metadata
     """
+    if check_job_cancelled(job_id):
+        raise Ignore()
+    
     from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 
     logger.info(f"[{job_id}] Starting page discovery for {url}")
@@ -84,11 +192,19 @@ def discover_pages(
         discovery_service = PageDiscoveryService()
         pages = discovery_service.discover_pages(url=url, max_pages=max_pages)
 
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Discovery task cancelled after page discovery")
+            raise Ignore()
+
         # Store discovered pages in DB
         _save_discovered_pages(job_id, pages)
 
         update_job_status(job_id, ScanJobStatus.discovering,
                           pages_discovered=len(pages))
+        
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Discovery task cancelled before returning")
+            raise Ignore()
 
         logger.info(f"[{job_id}] Discovered {len(pages)} pages")
         return {
@@ -97,7 +213,9 @@ def discover_pages(
             "count": len(pages),
             "url": url
         }
-
+    except Ignore:
+        logger.info(f"[{job_id}] Discovery task cancelled, stopping chain")
+        raise
     except Exception as e:
         logger.error(f"[{job_id}] Discovery failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -186,6 +304,11 @@ def select_pages(
     from app.features.scan.services.analysis.page_selector import PageSelectorService
 
     job_id = discovery_result["job_id"]
+
+    if check_job_cancelled(job_id):
+        logger.info(f"[{job_id}] Selection task cancelled before starting")
+        raise Ignore()
+    
     pages = discovery_result["pages"]
 
     logger.info(
@@ -202,11 +325,18 @@ def select_pages(
             site_title=site_title
         )
 
-        # Update pages in DB
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Selection task cancelled after LLM selection")
+            raise Ignore()
+        
         _mark_selected_pages(job_id, selected)
 
         update_job_status(job_id, ScanJobStatus.selecting,
                           pages_selected=len(selected))
+
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Selection task cancelled before returning")
+            raise Ignore()                  
 
         logger.info(f"[{job_id}] Selected {len(selected)} pages for analysis")
         return {
@@ -215,7 +345,9 @@ def select_pages(
             "count": len(selected),
             "total_discovered": len(pages)
         }
-
+    except Ignore:
+        logger.info(f"[{job_id}] Selection task cancelled")
+        raise
     except Exception as e:
         logger.error(f"[{job_id}] Selection failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -293,6 +425,11 @@ def scrape_page(
     Returns:
         Dict with scraped HTML and metadata (fully serializable)
     """
+
+    if check_job_cancelled(job_id):
+        logger.info(f"[{job_id}] Scrape task cancelled for {page_url}")
+        raise Ignore()
+    
     from app.features.scan.services.scraping.scraping_service import ScrapingService
 
     logger.info(f"[{job_id}] Scraping page: {page_url}")
@@ -302,11 +439,13 @@ def scrape_page(
         scrape_result = ScrapingService.scrape_page(page_url, timeout=15)
 
         if not scrape_result["success"]:
-            logger.error(
-                f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
-            raise Exception(scrape_result.get(
-                "error", "Unknown scraping error"))
-
+            logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
+            raise Exception(scrape_result.get("error", "Unknown scraping error"))
+        
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Scrape task cancelled after scraping {page_url}")
+            raise Ignore()
+        
         # Store basic scraping info in database
         if page_id and scrape_result["html"]:
             _update_page_scrape_data(
@@ -329,7 +468,10 @@ def scrape_page(
         logger.info(
             f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
         return result
-
+    
+    except Ignore:
+        logger.info(f"[{job_id}] Scrape task cancelled")
+        raise    
     except Exception as e:
         logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
         raise
@@ -358,13 +500,18 @@ def extract_data(
     Returns:
         Dict with extracted data
     """
-    from app.features.scan.services.extraction.extractor_service import ExtractorService
 
     job_id = scrape_result["job_id"]
     page_url = scrape_result["page_url"]
     page_id = scrape_result.get("page_id")
     html = scrape_result.get("html")
 
+    if check_job_cancelled(job_id):
+        logger.info(f"[{job_id}] Extract task cancelled for {page_url}")
+        raise Ignore()
+    
+    from app.features.scan.services.extraction.extractor_service import ExtractorService
+    
     logger.info(f"[{job_id}] Extracting data from: {page_url}")
 
     try:
@@ -374,6 +521,10 @@ def extract_data(
         # Extract all data using ExtractorService.extract_from_html
         extracted = ExtractorService.extract_from_html(html, page_url)
 
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Extract task cancelled after extraction for {page_url}")
+            raise Ignore()
+        
         # Update database with extracted data
         if page_id:
             _update_page_extracted_data(page_id, extracted)
@@ -387,7 +538,10 @@ def extract_data(
 
         logger.info(f"[{job_id}] Successfully extracted data from {page_url}")
         return result
-
+    
+    except Ignore:
+        logger.info(f"[{job_id}] Extract task cancelled")
+        raise    
     except Exception as e:
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
         raise
@@ -448,6 +602,10 @@ def analyze_page(
     job_id: str
 ) -> Dict[str, Any]:
 
+    if check_job_cancelled(job_id):
+        logger.info(f"[{job_id}] Analyze task cancelled")
+        raise Ignore()
+
     from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
     from app.features.scan.models.scan_job import ScanJobStatus
 
@@ -467,6 +625,10 @@ def analyze_page(
         # Pass extracted_data which has the format: {status_code, status, message, data}
         analysis_result = PageAnalyzerService.analyze_page(extracted_data)
 
+        if check_job_cancelled(job_id):
+            logger.info(f"[{job_id}] Analyze task cancelled after LLM analysis for {page_url}")
+            raise Ignore()
+
         analysis = _transform_analysis_result(analysis_result)
 
         _update_page_analysis(page_id, analysis, analysis_result)
@@ -482,7 +644,10 @@ def analyze_page(
             "analysis": analysis,
             "detailed_analysis": analysis_result
         }
-
+    
+    except Ignore:
+        logger.info(f"[{job_id}] Analyze task cancelled")
+        raise
     except Exception as e:
         logger.error(
             f"[{job_id}] Analysis failed for {page_url}: {e}",
@@ -550,10 +715,12 @@ def _create_scan_issues(
         Number of issues created
     """
     from app.features.scan.models.scan_issue import ScanIssue, IssueCategory, IssueSeverity
-
+    from app.features.scan.models.scan_job import ScanJob
+    
     db = get_sync_db()
     issues_created = 0
-
+    critical_count = 0  # Track high/critical severity issues
+    
     try:
         # Extract problems from each category
         categories_map = {
@@ -583,13 +750,18 @@ def _create_scan_issues(
 
                     # Map icon to severity
                     severity_str = _map_icon_to_severity(icon)
-
+                    severity_enum = IssueSeverity[severity_str]
+                    
+                    # Track critical/high issues
+                    if severity_str in ["high", "critical"]:
+                        critical_count += 1
+                    
                     # Create ScanIssue record
                     issue = ScanIssue(
                         scan_page_id=page_id,
                         scan_job_id=job_id,
                         category=issue_category,
-                        severity=IssueSeverity[severity_str],
+                        severity=severity_enum,
                         title=title[:512],  # Truncate to column limit
                         description=description,
                         what_this_means=None,  # Not provided by current LLM response
@@ -608,9 +780,22 @@ def _create_scan_issues(
 
         # Commit all issues at once
         db.commit()
-        logger.info(
-            f"Created {issues_created} ScanIssue records for page {page_id}")
-
+        logger.info(f"Created {issues_created} ScanIssue records for page {page_id} ({critical_count} critical/high)")
+        
+        # NEW: Trigger critical issues notification if any high-severity issues found
+        if critical_count > 0:
+            # Get job to find user_id
+            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+            if job:
+                send_scan_notification(
+                    user_id=str(job.user_id),
+                    title=f"⚠️ {critical_count} Critical Issue{'s' if critical_count > 1 else ''} Detected",
+                    message=f"Your scan found {critical_count} critical issue{'s' if critical_count > 1 else ''} that need immediate attention.",
+                    notification_type="issue_detected",
+                    priority="urgent",
+                    action_url=f"/scans/{job_id}/issues"
+                )
+        
     except Exception as e:
         logger.error(f"Failed to create scan issues: {e}", exc_info=True)
         db.rollback()
@@ -773,6 +958,10 @@ def aggregate_results(
     Returns:
         Dict with aggregated scores and summary
     """
+
+    if check_job_cancelled(job_id):
+        raise Ignore()
+    
     logger.info(
         f"[{job_id}] Aggregating results from {len(analysis_results)} pages")
 
@@ -838,6 +1027,16 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.pages_llm_analyzed = scores.get("pages_analyzed", 0)
             job.completed_at = datetime.utcnow()
             db.commit()
+            
+            # NEW: Trigger scan complete notification
+            send_scan_notification(
+                user_id=str(job.user_id),
+                title="Scan Complete! 🎉",
+                message=f"Your website scan finished with an overall score of {scores.get('score_overall', 0)}/100. {scores.get('total_issues', 0)} issues detected.",
+                notification_type="scan_complete",
+                priority="medium",
+                action_url=f"/scans/{job_id}"
+            )
     finally:
         db.close()
 
@@ -876,6 +1075,9 @@ def run_scan_pipeline(
     Returns:
         Job ID for tracking
     """
+    if check_job_cancelled(job_id):
+        raise Ignore()
+    
     logger.info(f"[{job_id}] Starting scan pipeline for {url}")
 
     # Chain: Discovery -> Selection
@@ -909,6 +1111,9 @@ def process_selected_pages(
 
     Creates a chord: parallel page processing -> aggregation
     """
+    if check_job_cancelled(job_id):
+        raise Ignore()
+    
     selected_pages = selection_result.get("selected_pages", [])
 
     if not selected_pages:
