@@ -302,7 +302,7 @@ class PageAnalyzerService:
         - description: short, one-line sentence describing the issue
         - severity: low, medium, or high
         - score_impact: Positive Integer between 0-100 quantifying how this issue affects the total score
-        - affected_element: Entrys that contain a css selector and the element html represents an element affected by this issue (if provided).
+        - affected_element: An object that contains css selector and the element html represents an element affected by this issue (if provided).
         - business_impact: short, one-line sentence explaining the impact
         - recommendation: short, one-line sentence with recommended action
         - resources: list of items with short title and URL

@@ -19,8 +19,7 @@ class Issue(BaseModel):
                              description="Short, one-line sentence describing the issue")
     score_impact: int = Field(
         ..., description="Positive Integer between 0-100 quantifying how this issue affects the total score")
-    affected_element: List[AffectedElement] = Field(
-        description="A list of elements affected by this issue. Can be empty if no HTML details are provided.")
+    affected_element: AffectedElement
     business_impact: str = Field(...,
                                  description="Short, one-line sentence explaining the impact")
     recommendation: str = Field(...,
@@ -38,8 +37,7 @@ class IssueUnified(BaseModel):
                              description="Short, one-line sentence describing the issue")
     score_impact: int = Field(
         ..., description="Positive Integer between 0-100 quantifying how this issue affects the total score")
-    affected_element: List[AffectedElement] = Field(
-        description="A list of elements affected by this issue. Can be empty if no HTML details are provided.")
+    affected_element: AffectedElement
     business_impact: str = Field(...,
                                  description="Short, one-line sentence explaining the impact")
     recommendation: str = Field(...,
