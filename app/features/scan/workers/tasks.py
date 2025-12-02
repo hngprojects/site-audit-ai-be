@@ -952,11 +952,16 @@ def aggregate_results(
     if check_job_cancelled(job_id):
         raise Ignore()
     
+    if isinstance(analysis_results, dict):
+        analysis_results = [analysis_results]
+    elif not isinstance(analysis_results, list):
+        logger.error(f"[{job_id}] Invalid analysis_results type: {type(analysis_results)}")
+        analysis_results = []
+    
     logger.info(
         f"[{job_id}] Aggregating results from {len(analysis_results)} pages")
 
     try:
-        # Calculate average scores
         if not analysis_results:
             aggregated = {
                 "score_overall": 0,
@@ -978,7 +983,6 @@ def aggregate_results(
                 "pages_analyzed": count
             }
 
-        # Update job with final scores
         _update_job_final_scores(job_id, aggregated)
 
         logger.info(
@@ -1108,7 +1112,7 @@ def process_selected_pages(
 
     if not selected_pages:
         logger.warning(f"[{job_id}] No pages selected for processing")
-        return aggregate_results.delay([], job_id)
+        return aggregate_results([], job_id)
 
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.scraping)
@@ -1130,7 +1134,7 @@ def process_selected_pages(
 
     # Chord: run all page tasks in parallel, then aggregate
     # If notification email is provided, chain it after aggregation
-    aggregation_task = aggregate_results.s(job_id)
+    aggregation_task = aggregate_results.s(job_id=job_id)
     
     if notification_email:
         from app.features.scan.workers.periodic_tasks import send_scan_completion_email
