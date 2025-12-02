@@ -473,11 +473,6 @@ async def get_scan_results(
         pages_result = await db.execute(pages_query)
         all_pages = pages_result.scalars().all()
 
-        # Build results with detailed analysis
-        all_issues = [
-            page.issues
-            for page in all_pages if page.is_selected_by_llm
-        ]
         # Fetch all issues for this job
         issues = await get_issues_for_job(db, job_id)
         
@@ -508,8 +503,7 @@ async def get_scan_results(
                 "score_breakdown": {
                     "seo": job.score_seo or 0,
                     "accessibility": job.score_accessibility or 0,
-                    "performance": job.score_performance or 0,
-                    "design": job.score_design or 0
+                    "performance": job.score_performance or 0
                 },
                 "total_issues": len(issues),
                 "critical_issues": severity_counts["critical"],
@@ -536,7 +530,7 @@ async def get_scan_results(
                     "pages_discovered": job.pages_discovered,
                     "pages_selected": job.pages_selected,
                     "pages_analyzed": job.pages_llm_analyzed,
-                    "issues": all_issues
+                    "issues": issue_summaries
                 }
             }
         )

@@ -70,7 +70,11 @@ class PageDiscoveryService:
         
         # service = Service(_CHROMEDRIVER_PATH)
         # driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver_service = Service(executable_path='/usr/local/bin/chromedriver')  
+        global _CHROMEDRIVER_PATH
+        if _CHROMEDRIVER_PATH is None:
+            _CHROMEDRIVER_PATH = ChromeDriverManager().install()
+        driver_service = Service(_CHROMEDRIVER_PATH)
+        
         driver = webdriver.Chrome(service=driver_service, options=chrome_options)
         # driver.get('https://www.google.com')
 

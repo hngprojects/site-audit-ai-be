@@ -6,6 +6,10 @@ from celery.exceptions import Retry
 
 from app.platform.celery_app import celery_app
 
+# Import ReferralLink early to prevent mapper initialization errors
+# This ensures ReferralLink is loaded before User model tries to configure
+from app.features.referral.models.referral_link import ReferralLink  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 
@@ -778,35 +782,36 @@ def _create_scan_issues(
     critical_count = 0  # Track high/critical severity issues
     
 
+
     try:
-        # Extract problems from each category
+        # Extract issues from each category (NEW LLM format)
         categories_map = {
-            # Usability problems map to accessibility
-            "usability": IssueCategory.accessibility,
-            "performance": IssueCategory.performance,
-            "seo": IssueCategory.seo,
+            "usability_issues": IssueCategory.accessibility,  # Usability → accessibility
+            "performance_issues": IssueCategory.performance,
+            "seo_issues": IssueCategory.seo,
         }
 
         for section_key, issue_category in categories_map.items():
-            section = detailed_analysis.get(section_key, {})
-            problems = section.get("problems", [])
+            # Get issues array directly from LLM response
+            issues = detailed_analysis.get(section_key, [])
 
-            for problem in problems:
+            for issue_data in issues:
                 try:
-                    # Extract problem details
-                    icon = problem.get("icon", "warning")
-                    title = problem.get("title", "")
-                    # Fallback to title if no description
-                    description = problem.get("description", title)
+                    # Extract fields directly from LLM
+                    title = issue_data.get("title", "")
+                    severity_str = issue_data.get("severity", "medium")  # Direct from LLM
+                    description = issue_data.get("description", "")
+                    business_impact = issue_data.get("business_impact", "")  # From LLM
+                    recommendation = issue_data.get("recommendation", "")  # From LLM
+                    resources = issue_data.get("resources", [])  # From LLM (already array)
 
                     # Skip if no title
                     if not title:
                         logger.warning(
-                            f"Skipping problem with no title in {section_key} section")
+                            f"Skipping issue with no title in {section_key} section")
                         continue
 
-                    # Map icon to severity
-                    severity_str = _map_icon_to_severity(icon)
+                    # Map severity string to enum
                     severity_enum = IssueSeverity[severity_str]
                     
                     # Track critical/high issues
@@ -822,13 +827,6 @@ def _create_scan_issues(
                         "info": 1.0
                     }
                     impact_score = severity_impact_scores.get(severity_str, 5.0)
-                    
-                    # Generate business impact message based on category and severity
-                    business_impact = _generate_business_impact(issue_category, severity_str, title)
-                    
-                    # Get relevant resources/documentation links
-                    resources = _get_issue_resources(issue_category, title)
-                    
 
                     # Create ScanIssue record
                     issue = ScanIssue(
@@ -838,14 +836,14 @@ def _create_scan_issues(
                         severity=severity_enum,
                         title=title[:512],  # Truncate to column limit
                         description=description,
-                        what_this_means=None,  # Not provided by current LLM response
-                        recommendation=None,  # Not provided by current LLM response
-                        element_selector=None,  # Not provided by current LLM response
-                        element_html=None,  # Not provided by current LLM response
+                        what_this_means=None,  # Not provided by LLM
+                        recommendation=recommendation,  # From LLM
+                        element_selector=None,  # Not provided by LLM
+                        element_html=None,  # Not provided by LLM
                         impact_score=impact_score,  # Calculated based on severity
-                        affected_elements_count=0,  # Default to 0 since we don't have element details yet
-                        business_impact=business_impact,
-                        resources=resources,
+                        affected_elements_count=0,  # Not provided by LLM
+                        business_impact=business_impact,  # From LLM
+                        resources=resources,  # From LLM
                     )
 
                     db.add(issue)
@@ -1057,10 +1055,10 @@ def aggregate_results(
             count = len(valid_results)
 
             aggregated = {
-                "score_overall": sum(r["analysis"].get("overall_score", 0) for r in valid_results) // count if count else 0,
-                "score_seo": sum(r["analysis"].get("score_seo", 0) for r in valid_results) // count if count else 0,
-                "score_accessibility": sum(r["analysis"].get("score_accessibility", 0) for r in valid_results) // count if count else 0,
-                "score_performance": sum(r["analysis"].get("score_performance", 0) for r in valid_results) // count if count else 0,
+                "score_overall": sum((r["analysis"].get("overall_score") or 0) for r in valid_results) // count if count else 0,
+                "score_seo": sum((r["analysis"].get("score_seo") or 0) for r in valid_results) // count if count else 0,
+                "score_accessibility": sum((r["analysis"].get("score_accessibility") or 0) for r in valid_results) // count if count else 0,
+                "score_performance": sum((r["analysis"].get("score_performance") or 0) for r in valid_results) // count if count else 0,
                 "total_issues": _count_scan_issues(job_id),
                 "pages_analyzed": count
             }

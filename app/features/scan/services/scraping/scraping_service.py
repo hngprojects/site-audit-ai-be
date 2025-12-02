@@ -17,7 +17,10 @@ class ScrapingService:
         chrome_options = Options()
         chrome_options.add_argument('--headless')  # Headless mode
         chrome_options.add_argument('--no-sandbox')
-        driver_service = Service(executable_path='/usr/local/bin/chromedriver')  
+        global _CHROMEDRIVER_PATH
+        if _CHROMEDRIVER_PATH is None:
+            _CHROMEDRIVER_PATH = ChromeDriverManager().install()
+        driver_service = Service(_CHROMEDRIVER_PATH) 
         driver = webdriver.Chrome(service=driver_service, options=chrome_options) 
 
         return driver
