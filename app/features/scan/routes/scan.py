@@ -27,6 +27,7 @@ from app.features.scan.services.orchestration.history import get_user_scan_histo
 from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
+from app.features.scan.services.utils.scan_result_parser import parse_audit_report
 
 logger = logging.getLogger(__name__)
 
@@ -464,9 +465,7 @@ async def get_scan_results(
                 all_issues.extend(
                     PageAnalyzerService.flatten_issues(page.analysis_details))
 
-        return api_response(
-
-            data={
+        unparsed_result = {
                 "job_id": job_id,
                 "status": job.status,
                 "results": {
@@ -483,6 +482,11 @@ async def get_scan_results(
                     "issues": all_issues
                 }
             }
+        
+        parsed_result = parse_audit_report(unparsed_result)
+        
+        return api_response(
+            data=parsed_result
         )
 
     except Exception as e:
