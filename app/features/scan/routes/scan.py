@@ -269,10 +269,8 @@ async def start_scan_async(
             queued_at=datetime.utcnow()
         )
         db.add(scan_job)
-        await db.commit()
-        await db.refresh(scan_job)
+        await db.flush()
         
-        # Queue the scan pipeline to Celery
         task_result = run_scan_pipeline.delay(
             job_id=scan_job.id,
             url=url_str,
@@ -589,8 +587,8 @@ async def stop_scan(
             data={}
         )
     return api_response(
-        data={"job_id": job_id, "status": "stopped"},
-        message="Scan stopped and marked as failed",
+        data={"job_id": job_id, "status": "cancelled"},
+        message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
-    )   
+    )
 
