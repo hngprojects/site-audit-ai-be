@@ -30,72 +30,71 @@ API for website auditing and analysis, built with FastAPI, SQLAlchemy (async), A
 - **Platform**: Shared code (database, config, email, response formatting, etc.) lives in the `platform` directory
 - **API Routers**: All feature routers are registered in `v1.py` and included in `main.py`
 
-## 💻 Contributing
+## Prerequisites
 
-### Adding a New Feature
+Before you begin, ensure you have the following installed:
 
-1. Create a new folder under `features` (e.g., `app/features/yourfeature/`)
-2. Add subfolders as needed:
-   - `models/` for SQLAlchemy models
-   - `routes/` for FastAPI routers
-   - `schemas/` for Pydantic schemas
-   - `services/` for business logic
-   - `utils/` for feature-specific helpers
-3. Register your router in `v1.py`
+- **Python 3.11**: Required for the project.
+- **`uv`**: For package management. Install it via `pip install uv`.
+- **Docker**: To run the PostgreSQL database.
 
-### Working on Platform Services
+## 💻 Setup & Development
 
-- Add shared services (e.g., email, database session, config) in the `platform` directory
-- Use these services in your features by importing from `app.platform`
+1.  **Clone the Repository**
+    ```bash
+    git clone <repo-url> && cd site-audit-ai-be
+    ```
 
-### Where to Find Things
+2.  **Create and Activate Virtual Environment**
+    ```bash
+    uv venv site-audit
+    source site-audit/bin/activate
+    ```
 
-- **Feature endpoints**: `app/features/<feature>/routes/`
-- **Feature models**: `app/features/<feature>/models/`
-- **Feature schemas**: `app/features/<feature>/schemas/`
-- **Feature logic**: `app/features/<feature>/services/`
-- **Shared services**: `app/platform/services/`
-- **Database/session/config**: `app/platform/db/`, `app/platform/config.py`
-- **API router registration**: `app/api_routers/v1.py`
-- **App entrypoint**: `app/main.py`
+3.  **Install Dependencies**
+    ```bash
+    uv sync
+    ```
 
-##  Setup & Development
+4.  **Start PostgreSQL Database (using Docker)**
+    - Ensure Docker is running.
+    - Run the following command to start a PostgreSQL container. This will create a database named `site_audit_db` with user `site_audit_user` and password `supersecret`, exposed on port `5433`.
+    ```bash
+    docker run --name site-audit-db -e POSTGRES_USER=site_audit_user -e POSTGRES_PASSWORD=supersecret -e POSTGRES_DB=site_audit_db -p 5433:5432 -v site-audit-db-data:/var/lib/postgresql/data -d postgres:16
+    ```
+    - If you need to stop or remove the container:
+      ```bash
+      docker stop site-audit-db
+      docker rm site-audit-db
+      docker volume rm site-audit-db-data
+      ```
 
-### Clone the Repository
+5.  **Set Up Environment Variables**
+    - Copy `.env.example` to a new `.env` file:
+      ```bash
+      cp .env.example .env
+      ```
+    - Update the `.env` file. The `DATABASE_URL` should match the credentials used for the Docker container (e.g., `postgresql+asyncpg://site_audit_user:supersecret@localhost:5433/site_audit_db`). Fill in your JWT secret, email configuration, and other required values.
 
-```bash
-git clone <repo-url> && cd site-audit-ai-be
-```
+6.  **Run Database Migrations**
+    ```bash
+    alembic upgrade head
+    ```
 
-### Install Dependencies
+7.  **Start the Application**
+    - To run the FastAPI server:
+      ```bash
+      uvicorn app.main:app --reload
+      ```
+    - To run the Celery worker for background tasks (requires RabbitMQ and Redis to be running separately):
+      ```bash
+      celery -A app.platform.celery_app.celery_app worker --loglevel=info
+      ```
 
-```bash
-uv sync
-```
-
-> **Note**: Or use `pip install -e .` if not using uv
-
-### Set Up Environment Variables
-
-Copy `.env.example` to `.env` and fill in your values.
-
-### Run Migrations
-
-```bash
-alembic upgrade head
-```
-
-### Start the Application
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### Run Tests
-
-```bash
-pytest
-```
+8.  **Run Tests**
+    ```bash
+    pytest
+    ```
 
 ## 📝 Notes
 
