@@ -7,13 +7,26 @@ class Resource(BaseModel):
     url: str
 
 
+class AffectedElement(BaseModel):
+    selector: str = None
+    html: str = None
+
+
 class Issue(BaseModel):
     title: str
     severity: str
-    description: str = Field(..., description="Short, one-line sentence describing the issue")
-    business_impact: str = Field(..., description="Short, one-line sentence explaining the impact")
-    recommendation: str = Field(..., description="Short, one-line sentence with recommended action")
-    resources: List[Resource] = Field(..., description="List of resources with short titles and URLs")
+    description: str = Field(...,
+                             description="Short, one-line sentence describing the issue")
+    score_impact: int = Field(
+        ..., description="Positive Integer between 0-100 quantifying how this issue affects the total score")
+    affected_element: List[AffectedElement] = Field(
+        description="A list of elements affected by this issue. Can be empty if no HTML details are provided.")
+    business_impact: str = Field(...,
+                                 description="Short, one-line sentence explaining the impact")
+    recommendation: str = Field(...,
+                                description="Short, one-line sentence with recommended action")
+    resources: List[Resource] = Field(
+        ..., description="List of resources with short titles and URLs")
 
 
 class IssueUnified(BaseModel):
@@ -21,10 +34,18 @@ class IssueUnified(BaseModel):
     category: str
     page_url: str
     severity: str
-    description: str = Field(..., description="Short, one-line sentence describing the issue")
-    business_impact: str = Field(..., description="Short, one-line sentence explaining the impact")
-    recommendation: str = Field(..., description="Short, one-line sentence with recommended action")
-    resources: List[Resource] = Field(..., description="List of resources with short titles and URLs")
+    description: str = Field(...,
+                             description="Short, one-line sentence describing the issue")
+    score_impact: int = Field(
+        ..., description="Positive Integer between 0-100 quantifying how this issue affects the total score")
+    affected_element: List[AffectedElement] = Field(
+        description="A list of elements affected by this issue. Can be empty if no HTML details are provided.")
+    business_impact: str = Field(...,
+                                 description="Short, one-line sentence explaining the impact")
+    recommendation: str = Field(...,
+                                description="Short, one-line sentence with recommended action")
+    resources: List[Resource] = Field(
+        ..., description="List of resources with short titles and URLs")
 
 
 class PageAnalysisResult(BaseModel):

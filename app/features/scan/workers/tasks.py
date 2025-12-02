@@ -668,15 +668,12 @@ def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
     Returns:
         Dict with flat structure for database storage
     """
-    usability = analysis_result.get("usability", {})
-    performance = analysis_result.get("performance", {})
-    seo = analysis_result.get("seo", {})
 
     return {
         "overall_score": analysis_result.get("overall_score"),
-        "score_accessibility": usability.get("score"),
-        "score_performance": performance.get("score"),
-        "score_seo": seo.get("score"),
+        "score_accessibility": analysis_result.get("usability_score"),
+        "score_performance": analysis_result.get("performance_score"),
+        "score_seo": analysis_result.get("seo_score"),
     }
 
 
@@ -731,15 +728,11 @@ def _create_scan_issues(
         }
 
         for section_key, issue_category in categories_map.items():
-            section = detailed_analysis.get(section_key, {})
-            problems = section.get("problems", [])
+            problems = detailed_analysis.get(section_key + '_issues', [])
 
             for problem in problems:
                 try:
-                    # Extract problem details
-                    icon = problem.get("icon", "warning")
                     title = problem.get("title", "")
-                    # Fallback to title if no description
                     description = problem.get("description", title)
 
                     # Skip if no title
@@ -749,11 +742,10 @@ def _create_scan_issues(
                         continue
 
                     # Map icon to severity
-                    severity_str = _map_icon_to_severity(icon)
-                    severity_enum = IssueSeverity[severity_str]
+                    severity_str = problem.get('severity')
                     
                     # Track critical/high issues
-                    if severity_str in ["high", "critical"]:
+                    if severity_str in ["high"]:
                         critical_count += 1
                     
                     # Create ScanIssue record
@@ -761,13 +753,12 @@ def _create_scan_issues(
                         scan_page_id=page_id,
                         scan_job_id=job_id,
                         category=issue_category,
-                        severity=severity_enum,
+                        severity=severity_str,
                         title=title[:512],  # Truncate to column limit
                         description=description,
-                        what_this_means=None,  # Not provided by current LLM response
-                        recommendation=None,  # Not provided by current LLM response
-                        element_selector=None,  # Not provided by current LLM response
-                        element_html=None,  # Not provided by current LLM response
+                        recommendation=problem.get('recommendation', ''),
+                        element_selector=problem.get('affected_element').get('selector'),
+                        element_html=problem.get('affected_element').get('html'),
                     )
 
                     db.add(issue)

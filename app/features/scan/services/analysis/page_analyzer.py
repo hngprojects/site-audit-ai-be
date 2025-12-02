@@ -6,13 +6,14 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from app.features.scan.schemas.page_analyzer import PageAnalysisResult, IssueUnified
 from openai import OpenAI
+import google.generativeai as genai
 import json
 
 from app.platform.config import settings
 
 logger = logging.getLogger(__name__)
 
-# genai.configure(api_key=settings.GOOGLE_GEMINI_API_KEY)
+genai.configure(api_key=settings.GOOGLE_GEMINI_API_KEY)
 
 
 class ExtractorResponse(BaseModel):
@@ -300,6 +301,8 @@ class PageAnalyzerService:
         - title: short problem name
         - description: short, one-line sentence describing the issue
         - severity: low, medium, or high
+        - score_impact: Positive Integer between 0-100 quantifying how this issue affects the total score
+        - affected_element: Entrys that contain a css selector and the element html represents an element affected by this issue (if provided).
         - business_impact: short, one-line sentence explaining the impact
         - recommendation: short, one-line sentence with recommended action
         - resources: list of items with short title and URL
@@ -328,13 +331,13 @@ You MUST respond with ONLY valid JSON matching this exact structure:
   "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
   
   "usability_score": number (0-100),
-  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
   
   "performance_score": number (0-100),
-  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
 
   "seo_score": number (0-100),
-  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
 }}
 
 Do not include any text before or after the JSON. Only output valid JSON."""
@@ -423,6 +426,9 @@ Do not include any text before or after the JSON. Only output valid JSON."""
                         title=issue.title,
                         category=category,
                         severity=issue.severity,
+                        score_impact=issue.score_impact,
+                        affected_element=issue.affected_element,
+                        affected_element_count=int(len(issue.affected_element)),
                         description=issue.description,
                         business_impact=issue.business_impact,
                         recommendation=issue.recommendation,
@@ -438,7 +444,7 @@ Do not include any text before or after the JSON. Only output valid JSON."""
     #     Call Google Gemini with native structured output.
     #     """
     #     try:
-    #         model = GenerativeModel(
+    #         model = genai.GenerativeModel(
     #             "gemini-2.5-flash",
     #             generation_config={
     #                 "response_mime_type": "application/json",
