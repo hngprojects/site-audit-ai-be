@@ -22,6 +22,7 @@ from app.features.scan.models.scan_page import ScanPage
 from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
+from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
 from app.features.scan.services.orchestration.history import get_user_scan_history
 from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
@@ -223,13 +224,13 @@ async def start_scan_async(
                 payload = decode_access_token(credentials.credentials)
                 user_id = payload.get("sub")
             except Exception as e:
-                pass 
-        
+                pass
+
         if not user_id:
             user_id = data.user_id
-        
+
         device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
-        
+
         if user_id:
             site_query = select(Site).where(
                 Site.root_url == url_str,
@@ -251,8 +252,8 @@ async def start_scan_async(
                 total_scans=0
             )
             db.add(site)
-            await db.flush() 
-        
+            await db.flush()
+
         scan_job = ScanJob(
             user_id=user_id,
             device_id=device_id,
@@ -264,7 +265,7 @@ async def start_scan_async(
         await db.flush()
         await db.commit()
         await db.refresh(scan_job)
-        
+
         task_result = run_scan_pipeline.delay(
             job_id=scan_job.id,
             url=url_str,
@@ -273,7 +274,7 @@ async def start_scan_async(
         )
         scan_job.celery_task_id = task_result.id
         await db.commit()
-        
+
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")
 
         return api_response(
@@ -456,10 +457,12 @@ async def get_scan_results(
         all_pages = pages_result.scalars().all()
 
         # Build results with detailed analysis
-        all_issues = [
-            page.issues
-            for page in all_pages if page.is_selected_by_llm
-        ]
+        all_issues = []
+
+        for page in all_pages:
+            if page.is_selected_by_llm:
+                all_issues.extend(
+                    PageAnalyzerService.flatten_issues(page.analysis_details))
 
         return api_response(
 
@@ -560,6 +563,7 @@ async def get_scan_pages(
             data={}
         )
 
+
 @router.post("/{job_id}/stop")
 async def stop_scan(
     job_id: str,
@@ -577,4 +581,3 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
-
