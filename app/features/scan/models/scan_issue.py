@@ -42,7 +42,6 @@ class ScanIssue(BaseModel):
     # Issue details
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=False)
-    what_this_means = Column(Text, nullable=True)
     recommendation = Column(Text, nullable=True)
 
     # Element context (if applicable)

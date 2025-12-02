@@ -21,7 +21,16 @@ from app.features.scan.routes.scraping import router as scan_scraping_router
 from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
 
+
+from app.features.admin.routes import router as admin_router
+from app.features.leads.routes.lead_route import router as leads_router
+
 api_router = APIRouter()
+
+
+# ...
+
+
 
 # Register all feature routes
 api_router.include_router(support_router)
@@ -33,9 +42,7 @@ api_router.include_router(referral_links_router)
 api_router.include_router(health_router)
 api_router.include_router(waitlist_router)
 api_router.include_router(request_form_router)
-api_router.include_router(contact_router)
-api_router.include_router(notifications_router)
-api_router.include_router(websocket_notifications_router)
+api_router.include_router(leads_router)
 
 # Register scan feature routes
 api_router.include_router(scan_router)
@@ -44,3 +51,6 @@ api_router.include_router(scan_selection_router)
 api_router.include_router(scan_scraping_router)
 api_router.include_router(scan_analysis_router)
 api_router.include_router(scan_pages_router)
+api_router.include_router(admin_router)
+api_router.include_router(websocket_notifications_router)
+

@@ -1,0 +1,8 @@
+{% extends "base_email.html" %}
+{% block title %}New Lead{% endblock %}
+{% block content %}
+<h2>New Lead Captured</h2>
+<p><strong>Email:</strong> {{ lead.email }}</p>
+
+<p>Captured via lead generation form.</p>
+{% endblock %}

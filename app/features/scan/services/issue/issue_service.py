@@ -83,8 +83,8 @@ def format_issue_summary(issue: ScanIssue) -> Dict[str, Any]:
     
     # Use description as short_description (truncate if too long)
     short_desc = issue.__dict__.get('description', '')
-    if len(short_desc) > 200:
-        short_desc = short_desc[:197] + "..."
+    if len(short_desc) > 400:
+        short_desc = short_desc[:397] + "..."
     
     # Access enums via __dict__ to avoid async issues
     category_obj = issue.__dict__.get('category')
@@ -150,7 +150,6 @@ def format_issue_detail(issue: ScanIssue) -> Dict[str, Any]:
         "category": category_obj.value if isinstance(category_obj, IssueCategory) else str(category_obj),
         "severity": severity_obj.value if isinstance(severity_obj, IssueSeverity) else str(severity_obj),
         "description": issue.__dict__.get('description'),
-        "what_this_means": issue.__dict__.get('what_this_means'),
         "recommendation": issue.__dict__.get('recommendation'),
         "score_impact": issue.__dict__.get('impact_score'),
         "page_url": page_url,

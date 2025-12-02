@@ -7,24 +7,20 @@ class Resource(BaseModel):
     url: str
 
 
+class AffectedElement(BaseModel):
+    selector: str
+    html: str
+
+
 class Issue(BaseModel):
     title: str
     severity: str
-    description: str = Field(..., description="Short, one-line sentence describing the issue")
-    business_impact: str = Field(..., description="Short, one-line sentence explaining the impact")
-    recommendation: str = Field(..., description="Short, one-line sentence with recommended action")
-    resources: List[Resource] = Field(..., description="List of resources with short titles and URLs")
-
-
-class IssueUnified(BaseModel):
-    title: str
-    category: str
-    page_url: str
-    severity: str
-    description: str = Field(..., description="Short, one-line sentence describing the issue")
-    business_impact: str = Field(..., description="Short, one-line sentence explaining the impact")
-    recommendation: str = Field(..., description="Short, one-line sentence with recommended action")
-    resources: List[Resource] = Field(..., description="List of resources with short titles and URLs")
+    description: str
+    score_impact: int
+    affected_element: AffectedElement
+    business_impact: str
+    recommendation: str
+    resources: List[Resource]
 
 
 class PageAnalysisResult(BaseModel):

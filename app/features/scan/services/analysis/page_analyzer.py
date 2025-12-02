@@ -1,18 +1,16 @@
 import os
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 from copy import deepcopy
 from datetime import datetime
 from pydantic import BaseModel, Field
-from app.features.scan.schemas.page_analyzer import PageAnalysisResult, IssueUnified
+from app.features.scan.schemas.page_analyzer import PageAnalysisResult
 from openai import OpenAI
 import json
 
 from app.platform.config import settings
 
 logger = logging.getLogger(__name__)
-
-# genai.configure(api_key=settings.GOOGLE_GEMINI_API_KEY)
 
 
 class ExtractorResponse(BaseModel):
@@ -300,6 +298,8 @@ class PageAnalyzerService:
         - title: short problem name
         - description: short, one-line sentence describing the issue
         - severity: low, medium, or high
+        - score_impact: Positive Integer between 0-100 quantifying how this issue affects the total score
+        - affected_element: An object that contains css selector and the element html represents an element affected by this issue (if provided).
         - business_impact: short, one-line sentence explaining the impact
         - recommendation: short, one-line sentence with recommended action
         - resources: list of items with short title and URL
@@ -328,13 +328,13 @@ You MUST respond with ONLY valid JSON matching this exact structure:
   "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
   
   "usability_score": number (0-100),
-  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
   
   "performance_score": number (0-100),
-  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
 
   "seo_score": number (0-100),
-  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
+  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "affected_element": {{"selector": "string", "html": "string"}}, "description": "string", "business_impact": "string", "recommendation": "string", "resources": [{{"title": "string", "url": "string"}}]}}, ...],
 }}
 
 Do not include any text before or after the JSON. Only output valid JSON."""
@@ -400,12 +400,13 @@ Do not include any text before or after the JSON. Only output valid JSON."""
             raise
 
     @staticmethod
-    def flatten_issues(result: PageAnalysisResult) -> List[IssueUnified]:
+    def flatten_issues(result: dict) -> list:
         """
-        Convert scattered issue lists from usability, performance, and seo
-        into one unified list of annotated issues.
+        Convert usability/performance/seo issues from a raw dict
+        into a unified list of IssueUnified-compatible dicts.
         """
-        unified: List[IssueUnified] = []
+
+        unified = []
 
         category_map = {
             "usability_issues": "usability",
@@ -414,65 +415,34 @@ Do not include any text before or after the JSON. Only output valid JSON."""
         }
 
         for field_name, category in category_map.items():
-            issues = getattr(result, field_name, [])
+
+            issues = result.get(field_name, [])
+            # Ensure it's a list (LLMs sometimes return dict or None)
+            if not isinstance(issues, list):
+                continue
 
             for issue in issues:
+                if not isinstance(issue, dict):
+                    continue
+
+                # Extract affected element safely
+                affected_element = issue.get("affected_element")
+                affected_element_count = 1 if affected_element else 0
+
                 unified.append(
-                    IssueUnified(
-                        page_url=result.url,
-                        title=issue.title,
-                        category=category,
-                        severity=issue.severity,
-                        description=issue.description,
-                        business_impact=issue.business_impact,
-                        recommendation=issue.recommendation,
-                        resources=issue.resources,
-                    )
+                    {
+                        "page_url": result.get("url"),
+                        "title": issue.get("title"),
+                        "category": category,
+                        "severity": issue.get("severity"),
+                        "score_impact": issue.get("score_impact"),
+                        "affected_element": affected_element,
+                        "affected_element_count": 1,
+                        "description": issue.get("description"),
+                        "business_impact": issue.get("business_impact"),
+                        "recommendation": issue.get("recommendation"),
+                        "resources": issue.get("resources", []),
+                    }
                 )
 
         return unified
-
-    # @staticmethod
-    # def _call_llm_test(prompt: str) -> PageAnalysisResult:
-    #     """
-    #     Call Google Gemini with native structured output.
-    #     """
-    #     try:
-    #         model = GenerativeModel(
-    #             "gemini-2.5-flash",
-    #             generation_config={
-    #                 "response_mime_type": "application/json",
-    #                 "response_schema": PageAnalysisResult,
-    #                 "temperature": 0,
-    #                 "top_p": 1,
-    #                 "top_k": 1,
-    #             }
-    #         )
-
-    #         response = model.generate_content(prompt)
-
-    #         try:
-    #             print(f"Gemini JSON Response: {response.text}")
-    #             result_dict = json.loads(response.text)
-    #         except json.JSONDecodeError as json_err:
-    #             logger.error(f"JSON parse error: {json_err}")
-    #             cleaned_text = response.text.strip()
-
-    #             if cleaned_text.startswith('{'):
-    #                 last_brace = cleaned_text.rfind('}')
-    #                 if last_brace > 0:
-    #                     cleaned_text = cleaned_text[:last_brace + 1]
-    #                     result_dict = json.loads(cleaned_text)
-    #                 else:
-    #                     raise
-    #             else:
-    #                 raise
-
-    #         result = PageAnalysisResult(**result_dict)
-
-    #         logger.info(f"Gemini analysis completed for {result.url}")
-    #         return result
-
-    #     except Exception as e:
-    #         logger.error(f"Gemini API call failed: {str(e)}")
-    #         raise
