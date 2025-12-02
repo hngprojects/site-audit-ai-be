@@ -216,8 +216,7 @@ async def start_scan_async(
     try:
         url_str = str(data.url)
         parsed = urlparse(url_str)
-        
-        # Extract user_id from token if authenticated
+
         user_id = None
         if credentials:
             try:
@@ -225,24 +224,19 @@ async def start_scan_async(
                 payload = decode_access_token(credentials.credentials)
                 user_id = payload.get("sub")
             except Exception as e:
-                pass  # If token is invalid, treat as anonymous
+                pass 
         
-        # Fallback to request body user_id if not authenticated
         if not user_id:
             user_id = data.user_id
         
-        # Generate device_id for anonymous users (needed for both Site and ScanJob)
         device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
-        # Check if Site exists for this user (or anonymous), create if not
         if user_id:
-            # For authenticated users, check for their site
             site_query = select(Site).where(
                 Site.root_url == url_str,
                 Site.user_id == user_id
             )
         else:
-            # For anonymous users, check for anonymous site by device_id
             site_query = select(Site).where(
                 Site.root_url == url_str,
                 Site.device_id == device_id
@@ -270,6 +264,8 @@ async def start_scan_async(
         )
         db.add(scan_job)
         await db.flush()
+        await db.commit()
+        await db.refresh(scan_job)
         
         task_result = run_scan_pipeline.delay(
             job_id=scan_job.id,
@@ -279,7 +275,6 @@ async def start_scan_async(
         )
         scan_job.celery_task_id = task_result.id
         await db.commit()
-        await db.refresh(scan_job)
         
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")
         
