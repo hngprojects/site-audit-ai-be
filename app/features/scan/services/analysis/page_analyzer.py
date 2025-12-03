@@ -63,7 +63,7 @@ class PageAnalyzerService:
                 prepared_data)
 
             raw = PageAnalyzerService._call_llm(analysis_prompt)
-
+            
             result = PageAnalyzerService._merge_llm_with_formula(
                 raw.model_dump(), prepared_data)
 
@@ -204,14 +204,10 @@ class PageAnalyzerService:
             )
         )
 
-        overall_score = round(
-            (usability_score + performance_score + seo_score) / 3)
-
         return {
             "usability_score_formula": usability_score,
             "performance_score_formula": performance_score,
-            "seo_score_formula": seo_score,
-            "overall_score_formula": overall_score
+            "seo_score_formula": seo_score
         }
 
     @staticmethod
@@ -227,21 +223,20 @@ class PageAnalyzerService:
             dict: Updated LLM response with averaged scores
         """
 
-        merged_response = deepcopy(llm_response)
-
+        merged_response = llm_response.copy()
+        
         formula_scores = PageAnalyzerService._calculate_formula_scores(
             prepared_data)
 
         for section in ["usability", "performance", "seo"]:
             llm_score = merged_response[section + "_score"]
             formula_score = formula_scores[f"{section}_score_formula"]
+            
             merged_response[section + "_score"] = round(
                 (llm_score + formula_score) / 2)
 
-        llm_overall = merged_response.get("overall_score", 0)
-        formula_overall = formula_scores["overall_score_formula"]
         merged_response["overall_score"] = round(
-            (llm_overall + formula_overall) / 2)
+            (merged_response["usability_score"] + merged_response["seo_score"] + merged_response["performance_score"]) / 3)
 
         return merged_response
 

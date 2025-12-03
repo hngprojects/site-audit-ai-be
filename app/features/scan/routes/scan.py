@@ -29,6 +29,7 @@ from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
+from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
 
 logger = logging.getLogger(__name__)
 
@@ -520,15 +521,13 @@ async def get_scan_issues(job_id: str, db: AsyncSession = Depends(get_db)):
         )
 
         score_overall = job.score_overall or 0
-
-        return api_response(
-            data={
+        parsed_issues = parse_detailed_audit_report({
                 "job_id": job_id,
                 "status": job.status,
                 "scanned_at": job.completed_at,
                 "score_overall": score_overall,
                 "score_seo": job.score_seo or 0,
-                "score_accessibility": job.score_accessibility or 0,
+                "score_usability": job.score_accessibility or 0,
                 "score_performance": job.score_performance or 0,
                 "summary": generate_summary_message(score_overall),
                 "issues": [
@@ -541,13 +540,14 @@ async def get_scan_issues(job_id: str, db: AsyncSession = Depends(get_db)):
                         "title": issue.title,
                         "description": issue.description,
                         "recommendation": issue.recommendation,
-                        "element_selector": issue.element_selector,
-                        "element_html": issue.element_html,
+                        "business_impact": issue.business_impact,
                         "created_at": issue.created_at,
                     }
                     for issue in issues
                 ]
-            }
+            })
+        return api_response(
+            data=parsed_issues
         )
 
     except Exception as e:

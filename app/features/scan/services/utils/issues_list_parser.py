@@ -29,7 +29,7 @@ def parse_detailed_audit_report(data: Dict[str, Any]) -> Dict[str, Any]:
             issue for issue in issues if issue["category"] == category_key]
 
         problems = []
-        impacts = [f"Improved {category_key} performance"]
+        impacts = []
         recommendations = []
 
         seen_titles = set()
