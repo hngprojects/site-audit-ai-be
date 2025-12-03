@@ -32,12 +32,15 @@ def get_sync_db():
 
 def verify_db_update(
     verify_func,
-    max_retries: int = 3,
-    delay_seconds: float = 0.5,
+    max_retries: int = 5,
+    delay_seconds: float = 0.3,
     error_message: str = "Database update verification failed"
 ):
+    """Verify database update with retry logic and exponential backoff."""
     for attempt in range(max_retries):
-        time.sleep(delay_seconds)
+        if attempt > 0: 
+            sleep_time = delay_seconds * (1.5 ** attempt) 
+            time.sleep(sleep_time)
         
         if verify_func():
             logger.info(f"DB update verified on attempt {attempt + 1}")
@@ -155,16 +158,25 @@ def update_job_status(job_id: str, status, **kwargs):
                 def verify_status_updated():
                     verify_db = get_sync_db()
                     try:
+                        verify_db.expire_all()  # Force fresh read
                         verified_job = verify_db.query(ScanJob).filter(
                             ScanJob.id == job_id
                         ).first()
-                        return verified_job and verified_job.status == status
+                        
+                        if not verified_job:
+                            return False
+                            
+                        # Robust comparison handling both Enum and String
+                        current_val = verified_job.status.value if hasattr(verified_job.status, 'value') else str(verified_job.status)
+                        target_val = status.value if hasattr(status, 'value') else str(status)
+                        
+                        return current_val == target_val
                     finally:
                         verify_db.close()
                 
                 verify_db_update(
                     verify_func=verify_status_updated,
-                    max_retries=3,
+                    max_retries=5,
                     delay_seconds=0.3,
                     error_message=f"Failed to verify status update to {status} for job {job_id}"
                 )
@@ -271,46 +283,87 @@ def _update_page_scrape_data(page_id: str, html_content: str, page_title: Option
 
 
 def _save_discovered_pages(job_id: str, pages: List[str]):
-    """Save discovered pages to database."""
+    """Save discovered pages to database with retry logic for race conditions."""
     # Import all related models to ensure SQLAlchemy mappers are configured
     from app.features.auth.models.user import User  # noqa: F401
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
+    from sqlalchemy.exc import IntegrityError
+    import psycopg2.errors
 
-    db = get_sync_db()
-    try:
-        for page_url in pages:
-            page = ScanPage(
-                scan_job_id=job_id,
-                page_url=page_url,
-                page_url_normalized=page_url.rstrip('/'),
-                is_selected_by_llm=False,
-                is_manually_selected=False,
-                is_manually_deselected=False
+    max_retries = 5
+    for attempt in range(max_retries):
+        db = get_sync_db()
+        try:
+            db.expire_all()
+            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+            if not job:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Job {job_id} not found yet, retry {attempt + 1}/{max_retries}")
+                    db.close()
+                    time.sleep(0.5 * (1.5 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    raise Exception(f"Job {job_id} does not exist after {max_retries} retries")
+            
+            # Job exists, now insert pages
+            for page_url in pages:
+                page = ScanPage(
+                    scan_job_id=job_id,
+                    page_url=page_url,
+                    page_url_normalized=page_url.rstrip('/'),
+                    is_selected_by_llm=False,
+                    is_manually_selected=False,
+                    is_manually_deselected=False
+                )
+                db.add(page)
+            
+            db.commit()
+            logger.info(f"Successfully saved {len(pages)} pages for job {job_id}")
+            
+            # Verify pages were saved
+            def verify_pages_saved():
+                verify_db = get_sync_db()
+                try:
+                    verify_db.expire_all()  # Force fresh read
+                    count = verify_db.query(ScanPage).filter(
+                        ScanPage.scan_job_id == job_id
+                    ).count()
+                    return count == len(pages)
+                finally:
+                    verify_db.close()
+            
+            verify_db_update(
+                verify_func=verify_pages_saved,
+                max_retries=5,
+                delay_seconds=0.3,
+                error_message=f"Failed to verify {len(pages)} pages saved for job {job_id}"
             )
-            db.add(page)
-        db.commit()
-        def verify_pages_saved():
-            verify_db = get_sync_db()
-            try:
-                count = verify_db.query(ScanPage).filter(
-                    ScanPage.scan_job_id == job_id
-                ).count()
-                return count == len(pages)
-            finally:
-                verify_db.close()
-        
-        verify_db_update(
-            verify_func=verify_pages_saved,
-            max_retries=3,
-            delay_seconds=0.5,
-            error_message=f"Failed to verify {len(pages)} pages saved for job {job_id}"
-        )
-        
-        logger.info(f"Verified {len(pages)} pages saved to DB for job {job_id}")    
-    finally:
-        db.close()
+            
+            logger.info(f"Verified {len(pages)} pages saved to DB for job {job_id}")
+            break  # Success, exit retry loop
+            
+        except IntegrityError as e:
+            db.rollback()
+            # Check if it's a foreign key violation
+            if isinstance(e.orig, psycopg2.errors.ForeignKeyViolation):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Foreign key violation for job {job_id}, retry {attempt + 1}/{max_retries}: {e}")
+                    db.close()
+                    time.sleep(0.5 * (1.5 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    logger.error(f"Foreign key violation persists after {max_retries} retries for job {job_id}")
+                    raise
+            else:
+                raise
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error saving pages for job {job_id}: {e}")
+            raise
+        finally:
+            db.close()
 
 
 # Phase 2: Selection
@@ -398,6 +451,7 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
         def verify_pages_marked():
             verify_db = get_sync_db()
             try:
+                verify_db.expire_all()  # Force fresh read
                 marked_count = verify_db.query(ScanPage).filter(
                     ScanPage.scan_job_id == job_id,
                     ScanPage.is_selected_by_llm == True
@@ -408,8 +462,8 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
         
         verify_db_update(
             verify_func=verify_pages_marked,
-            max_retries=3,
-            delay_seconds=0.5,
+            max_retries=5,
+            delay_seconds=0.3,
             error_message=f"Failed to verify {len(selected_urls)} pages marked as selected for job {job_id}"
         )
         
@@ -861,6 +915,7 @@ def _update_page_analysis(
             def verify_analysis_saved():
                 verify_db = get_sync_db()
                 try:
+                    verify_db.expire_all()  # Force fresh read
                     verified_page = verify_db.query(ScanPage).filter(
                         ScanPage.id == page_id
                     ).first()
@@ -874,8 +929,8 @@ def _update_page_analysis(
             
             verify_db_update(
                 verify_func=verify_analysis_saved,
-                max_retries=3,
-                delay_seconds=0.5,
+                max_retries=5,
+                delay_seconds=0.3,
                 error_message=f"Failed to verify analysis saved for page {page_id}"
             )
 
@@ -1035,7 +1090,8 @@ def aggregate_results(
 
     except Exception as e:
         logger.error(f"[{job_id}] Aggregation failed: {e}")
-        update_job_status(job_id, "failed", error_message=str(e))
+        from app.features.scan.models.scan_job import ScanJobStatus
+        update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
         raise
 
 
@@ -1044,14 +1100,14 @@ def _update_job_final_scores(job_id: str, scores: Dict):
     # Import all related models to ensure SQLAlchemy mappers are configured
     from app.features.auth.models.user import User  # noqa: F401
     from app.features.sites.models.site import Site  # noqa: F401
-    from app.features.scan.models.scan_job import ScanJob
+    from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
 
     db = get_sync_db()
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
         if job:
-            job.status = "completed"
+            job.status = ScanJobStatus.completed
             job.score_overall = scores.get("score_overall")
             job.score_seo = scores.get("score_seo")
             job.score_accessibility = scores.get("score_accessibility")
@@ -1061,32 +1117,10 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.pages_llm_analyzed = scores.get("pages_analyzed", 0)
             job.completed_at = datetime.utcnow()
             db.commit()
-
-            def verify_job_completed():
-                verify_db = get_sync_db()
-                try:
-                    verified_job = verify_db.query(ScanJob).filter(
-                        ScanJob.id == job_id
-                    ).first()
-                    return (
-                        verified_job and
-                        verified_job.status == "completed" and
-                        verified_job.score_overall == scores.get("score_overall") and
-                        verified_job.completed_at is not None
-                    )
-                finally:
-                    verify_db.close()
             
-            verify_db_update(
-                verify_func=verify_job_completed,
-                max_retries=3,
-                delay_seconds=0.5,
-                error_message=f"Failed to verify job {job_id} completion"
-            )
-
-            logger.info(f"Verified job {job_id} completion saved to DB")
+            logger.info(f"Job {job_id} marked as completed with score {scores.get('score_overall')}")
             
-            # NEW: Trigger scan complete notification
+            # Trigger scan complete notification
             send_scan_notification(
                 user_id=str(job.user_id),
                 title="Scan Complete! 🎉",
@@ -1095,6 +1129,8 @@ def _update_job_final_scores(job_id: str, scores: Dict):
                 priority="medium",
                 action_url=f"/scans/{job_id}"
             )
+        else:
+            logger.error(f"Job {job_id} not found when trying to update final scores")
     finally:
         db.close()
 
