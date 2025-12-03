@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from celery import shared_task, chain, group, chord
@@ -28,6 +29,25 @@ def get_sync_db():
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return SessionLocal()
 
+
+def verify_db_update(
+    verify_func,
+    max_retries: int = 3,
+    delay_seconds: float = 0.5,
+    error_message: str = "Database update verification failed"
+):
+    for attempt in range(max_retries):
+        time.sleep(delay_seconds)
+        
+        if verify_func():
+            logger.info(f"DB update verified on attempt {attempt + 1}")
+            return True
+        
+        if attempt < max_retries - 1:
+            logger.warning(f"DB update verification failed, retry {attempt + 1}/{max_retries}")
+    
+    logger.error(error_message)
+    raise Exception(error_message)
 
 async def _send_scan_notification_async(
     user_id: str,
@@ -123,6 +143,31 @@ def update_job_status(job_id: str, status, **kwargs):
                 if hasattr(job, key):
                     setattr(job, key, value)
             db.commit()
+
+            critical_statuses = [
+                ScanJobStatus.discovering,
+                ScanJobStatus.selecting,
+                ScanJobStatus.analyzing,
+                ScanJobStatus.failed
+            ]
+            
+            if status in critical_statuses:
+                def verify_status_updated():
+                    verify_db = get_sync_db()
+                    try:
+                        verified_job = verify_db.query(ScanJob).filter(
+                            ScanJob.id == job_id
+                        ).first()
+                        return verified_job and verified_job.status == status
+                    finally:
+                        verify_db.close()
+                
+                verify_db_update(
+                    verify_func=verify_status_updated,
+                    max_retries=3,
+                    delay_seconds=0.3,
+                    error_message=f"Failed to verify status update to {status} for job {job_id}"
+                )
             
             # NEW: Trigger scan failed notification
             if status == ScanJobStatus.failed and job.user_id:
@@ -247,6 +292,24 @@ def _save_discovered_pages(job_id: str, pages: List[str]):
             )
             db.add(page)
         db.commit()
+        def verify_pages_saved():
+            verify_db = get_sync_db()
+            try:
+                count = verify_db.query(ScanPage).filter(
+                    ScanPage.scan_job_id == job_id
+                ).count()
+                return count == len(pages)
+            finally:
+                verify_db.close()
+        
+        verify_db_update(
+            verify_func=verify_pages_saved,
+            max_retries=3,
+            delay_seconds=0.5,
+            error_message=f"Failed to verify {len(pages)} pages saved for job {job_id}"
+        )
+        
+        logger.info(f"Verified {len(pages)} pages saved to DB for job {job_id}")    
     finally:
         db.close()
 
@@ -333,6 +396,25 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
                 page.is_selected_by_llm = True
 
         db.commit()
+        def verify_pages_marked():
+            verify_db = get_sync_db()
+            try:
+                marked_count = verify_db.query(ScanPage).filter(
+                    ScanPage.scan_job_id == job_id,
+                    ScanPage.is_selected_by_llm == True
+                ).count()
+                return marked_count == len(selected_urls)
+            finally:
+                verify_db.close()
+        
+        verify_db_update(
+            verify_func=verify_pages_marked,
+            max_retries=3,
+            delay_seconds=0.5,
+            error_message=f"Failed to verify {len(selected_urls)} pages marked as selected for job {job_id}"
+        )
+        
+        logger.info(f"Verified {len(selected_urls)} pages marked as selected for job {job_id}")
     finally:
         db.close()
 
@@ -768,6 +850,30 @@ def _update_page_analysis(
             page.scanned_at = datetime.utcnow()
             db.commit()
 
+            def verify_analysis_saved():
+                verify_db = get_sync_db()
+                try:
+                    verified_page = verify_db.query(ScanPage).filter(
+                        ScanPage.id == page_id
+                    ).first()
+                    return (
+                        verified_page and
+                        verified_page.score_overall == analysis.get("overall_score") and
+                        verified_page.scanned_at is not None
+                    )
+                finally:
+                    verify_db.close()
+            
+            verify_db_update(
+                verify_func=verify_analysis_saved,
+                max_retries=3,
+                delay_seconds=0.5,
+                error_message=f"Failed to verify analysis saved for page {page_id}"
+            )
+
+            logger.info(f"Verified page {page_id} analysis saved to DB")
+            
+
             logger.info(f"Updated page {page_id} with analysis scores")
 
             # Create individual ScanIssue records from problems in detailed_analysis
@@ -947,6 +1053,30 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.pages_llm_analyzed = scores.get("pages_analyzed", 0)
             job.completed_at = datetime.utcnow()
             db.commit()
+
+            def verify_job_completed():
+                verify_db = get_sync_db()
+                try:
+                    verified_job = verify_db.query(ScanJob).filter(
+                        ScanJob.id == job_id
+                    ).first()
+                    return (
+                        verified_job and
+                        verified_job.status == "completed" and
+                        verified_job.score_overall == scores.get("score_overall") and
+                        verified_job.completed_at is not None
+                    )
+                finally:
+                    verify_db.close()
+            
+            verify_db_update(
+                verify_func=verify_job_completed,
+                max_retries=3,
+                delay_seconds=0.5,
+                error_message=f"Failed to verify job {job_id} completion"
+            )
+
+            logger.info(f"Verified job {job_id} completion saved to DB")
             
             # NEW: Trigger scan complete notification
             send_scan_notification(
