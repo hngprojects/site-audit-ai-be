@@ -5,7 +5,7 @@ def get_category_title(key: str) -> str:
     """Get friendly category title."""
     title_mapping = {
         "seo": "Visibility",
-        "usability": "Not Mobile-Friendly",
+        "accessibility": "Not Mobile-Friendly",
         "performance": "Slow Loading Speed"
     }
     return title_mapping.get(key, key)
@@ -38,7 +38,7 @@ def get_short_description(key: str, score: int) -> str:
     # Generic descriptions based on severity
     descriptions = {
         "seo": f"Your search visibility is {severity_text} and {action}.",
-        "usability": f"Mobile experience is {severity_text} and {action}.",
+        "accessibility": f"Mobile experience is {severity_text} and {action}.",
         "performance": f"Your site's loading speed is {severity_text} and {action}."
     }
     return descriptions.get(key, f"This area is {severity_text} and {action}.")
@@ -86,12 +86,12 @@ def parse_audit_report(data: Dict[str, Any]) -> Dict[str, Any]:
             "short_description": get_short_description("seo", score_seo)
         },
         {
-            "key": "usability",
-            "title": get_category_title("usability"),
+            "key": "accessibility",
+            "title": get_category_title("accessibility"),
             "severity": get_severity_from_score(score_accessibility),
             "score": score_accessibility,
             "score_max": 100,
-            "short_description": get_short_description("usability", score_accessibility)
+            "short_description": get_short_description("accessibility", score_accessibility)
         },
         {
             "key": "performance",

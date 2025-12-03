@@ -175,7 +175,7 @@ async def analyze_pages(
                 page.score_overall = analysis_result.get("overall_score")
                 page.score_seo = analysis_result.get("seo_score")
                 page.score_accessibility = analysis_result.get(
-                    "usability_score")  # UX maps to accessibility
+                    "accessibility_score")  # UX maps to accessibility
                 page.score_performance = analysis_result.get(
                     "performance_score")
                 page.issues = PageAnalyzerService.flatten_issues(
@@ -189,7 +189,7 @@ async def analyze_pages(
                     issue = ScanIssue(
                         scan_page_id=page.id,
                         scan_job_id=page.scan_job_id,
-                        category=problem.get('category', ""),
+                        category=problem.get('category', "") if problem.get('category', "") != 'accessibility' else 'accessibility',
                         severity=problem.get('severity', ""),
                         title=problem.get("title", "Unknown Issue"),
                         description=problem.get("description", ""),
