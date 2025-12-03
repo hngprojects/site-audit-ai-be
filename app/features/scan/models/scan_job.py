@@ -61,7 +61,6 @@ class ScanJob(BaseModel):
     score_seo = Column(Integer, nullable=True)
     score_accessibility = Column(Integer, nullable=True)
     score_performance = Column(Integer, nullable=True)
-    score_design = Column(Integer, nullable=True)
     
     # Issue counts (denormalized)
     total_issues = Column(Integer, default=0, nullable=False)
