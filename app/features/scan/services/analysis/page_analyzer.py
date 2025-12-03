@@ -63,7 +63,7 @@ class PageAnalyzerService:
                 prepared_data)
 
             raw = PageAnalyzerService._call_llm(analysis_prompt)
-            
+
             result = PageAnalyzerService._merge_llm_with_formula(
                 raw.model_dump(), prepared_data)
 
@@ -158,57 +158,59 @@ class PageAnalyzerService:
             raise
 
     @staticmethod
-    def _calculate_usability_score(prepared_data: dict) -> float:
-        acc_issues = prepared_data['accessibility_issues']
-        images_count = max(prepared_data['images_count'], 1)
-        total_inputs = max(len(acc_issues['inputs_missing_label']) + 1, 1)
-        total_buttons = max(len(acc_issues['buttons_missing_label']) + 1, 1)
-        total_links = max(len(acc_issues['links_missing_label']) + 1, 1)
-        empty_headings = max(len(acc_issues['empty_headings']), 1)
-
-        img_pct = len(acc_issues['images_missing_alt']) / images_count
-        inputs_pct = len(acc_issues['inputs_missing_label']) / total_inputs
-        buttons_pct = len(acc_issues['buttons_missing_label']) / total_buttons
-        links_pct = len(acc_issues['links_missing_label']) / total_links
-        headings_pct = len(acc_issues['empty_headings']) / empty_headings
-
-        weighted_pct = 0.4 * img_pct + 0.15 * inputs_pct + 0.15 * \
-            buttons_pct + 0.15 * links_pct + 0.15 * headings_pct
-
-        usability_score = max(0, 100 * (1 - weighted_pct))
-        return round(usability_score)
-
-    @staticmethod
     def _calculate_formula_scores(prepared_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate formula-based scores using a configurable scoring map.
+        Easier to maintain and extend.
+        """
+        acc_issues = prepared_data['accessibility_issues']
         seo_issues = prepared_data['seo_issues']
 
-        usability_score = PageAnalyzerService._calculate_usability_score(
-            prepared_data)
-
-        performance_score = max(
-            0,
-            100 - (
-                prepared_data['images_count'] * 0.5 +
-                prepared_data['headings_count'] * 0.5 +
-                prepared_data['word_count'] / 5000
-            )
-        )
-
-        seo_score = max(
-            0,
-            100 - (
-                seo_issues.get('total_issues', 0) * 2 +
-                (0 if seo_issues.get('has_title') else 5) +
-                (0 if seo_issues.get('has_description') else 5) +
-                (0 if seo_issues.get('canonical_url') else 2)
-            )
-        )
-
-        return {
-            "usability_score_formula": usability_score,
-            "performance_score_formula": performance_score,
-            "seo_score_formula": seo_score
+        score_map = {
+            "usability": [
+                {"value": len(acc_issues['images_missing_alt']), "weight": 0.4, "total": max(
+                    prepared_data['images_count'], 1)},
+                {"value": len(acc_issues['inputs_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['inputs_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['buttons_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['buttons_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['links_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['links_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['empty_headings']), "weight": 0.15, "total": max(
+                    len(acc_issues['empty_headings']), 1)},
+            ],
+            "performance": [
+                {"value": prepared_data['images_count'],
+                    "weight": 0.5, "total": 100},
+                {"value": prepared_data['headings_count'],
+                    "weight": 0.5, "total": 100},
+                {"value": prepared_data['word_count'],
+                    "weight": 1/5000, "total": 100},
+            ],
+            "seo": [
+                {"value": seo_issues.get(
+                    'total_issues', 0) * 2, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'has_title') else 5, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'has_description') else 5, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'canonical_url') else 2, "weight": 1, "total": 100},
+            ]
         }
+
+        formula_scores = {}
+
+        for section, rules in score_map.items():
+            if section == "usability":
+                weighted_pct = sum(
+                    rule['weight'] * (rule['value'] / rule['total']) for rule in rules)
+                score = max(0, 100 * (1 - weighted_pct))
+            else:
+                score = max(0, 100 - sum(rule['value'] for rule in rules))
+            formula_scores[f"{section}_score_formula"] = round(score)
+
+        return formula_scores
 
     @staticmethod
     def _merge_llm_with_formula(llm_response: dict, prepared_data: dict) -> dict:
@@ -224,14 +226,14 @@ class PageAnalyzerService:
         """
 
         merged_response = llm_response.copy()
-        
+
         formula_scores = PageAnalyzerService._calculate_formula_scores(
             prepared_data)
 
         for section in ["usability", "performance", "seo"]:
             llm_score = merged_response[section + "_score"]
             formula_score = formula_scores[f"{section}_score_formula"]
-            
+
             merged_response[section + "_score"] = round(
                 (llm_score + formula_score) / 2)
 
