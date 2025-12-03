@@ -7,8 +7,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 from typing import List, Optional
 import hashlib
-import logging
-
+from app.platform.logger import get_logger
 from app.features.scan.schemas.scan import (
     ScanStartRequest,
     ScanStartResponse,
@@ -31,7 +30,7 @@ from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
