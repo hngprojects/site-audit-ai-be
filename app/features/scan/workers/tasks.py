@@ -1,8 +1,9 @@
 import logging
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from celery import shared_task, chain, group, chord
-from celery.exceptions import Retry, Ignore
+from celery.exceptions import Retry
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.platform.celery_app import celery_app
 from app.features.auth.models.user import User 
@@ -29,16 +30,27 @@ def get_sync_db():
     return SessionLocal()
 
 
-def check_job_cancelled(job_id: str) -> bool: 
-    db = get_sync_db()
-    try:
-        job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-        if job and job.status == ScanJobStatus.cancelled:
-            logger.info(f"[{job_id}] Job is cancelled, skipping task")
+def verify_db_update(
+    verify_func,
+    max_retries: int = 5,
+    delay_seconds: float = 0.3,
+    error_message: str = "Database update verification failed"
+):
+    """Verify database update with retry logic and exponential backoff."""
+    for attempt in range(max_retries):
+        if attempt > 0: 
+            sleep_time = delay_seconds * (1.5 ** attempt) 
+            time.sleep(sleep_time)
+        
+        if verify_func():
+            logger.info(f"DB update verified on attempt {attempt + 1}")
             return True
-        return False
-    finally:
-        db.close()
+        
+        if attempt < max_retries - 1:
+            logger.warning(f"DB update verification failed, retry {attempt + 1}/{max_retries}")
+    
+    logger.error(error_message)
+    raise Exception(error_message)
 
 async def _send_scan_notification_async(
     user_id: str,
@@ -134,6 +146,40 @@ def update_job_status(job_id: str, status, **kwargs):
                 if hasattr(job, key):
                     setattr(job, key, value)
             db.commit()
+
+            critical_statuses = [
+                ScanJobStatus.discovering,
+                ScanJobStatus.selecting,
+                ScanJobStatus.analyzing,
+                ScanJobStatus.failed
+            ]
+            
+            if status in critical_statuses:
+                def verify_status_updated():
+                    verify_db = get_sync_db()
+                    try:
+                        verify_db.expire_all()  # Force fresh read
+                        verified_job = verify_db.query(ScanJob).filter(
+                            ScanJob.id == job_id
+                        ).first()
+                        
+                        if not verified_job:
+                            return False
+                            
+                        # Robust comparison handling both Enum and String
+                        current_val = verified_job.status.value if hasattr(verified_job.status, 'value') else str(verified_job.status)
+                        target_val = status.value if hasattr(status, 'value') else str(status)
+                        
+                        return current_val == target_val
+                    finally:
+                        verify_db.close()
+                
+                verify_db_update(
+                    verify_func=verify_status_updated,
+                    max_retries=5,
+                    delay_seconds=0.3,
+                    error_message=f"Failed to verify status update to {status} for job {job_id}"
+                )
             
             # NEW: Trigger scan failed notification
             if status == ScanJobStatus.failed and job.user_id:
@@ -178,8 +224,6 @@ def discover_pages(
     Returns:
         Dict with discovered pages and metadata
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 
@@ -192,19 +236,11 @@ def discover_pages(
         discovery_service = PageDiscoveryService()
         pages = discovery_service.discover_pages(url=url, max_pages=max_pages)
 
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Discovery task cancelled after page discovery")
-            raise Ignore()
-
         # Store discovered pages in DB
         _save_discovered_pages(job_id, pages)
 
         update_job_status(job_id, ScanJobStatus.discovering,
                           pages_discovered=len(pages))
-        
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Discovery task cancelled before returning")
-            raise Ignore()
 
         logger.info(f"[{job_id}] Discovered {len(pages)} pages")
         return {
@@ -213,9 +249,7 @@ def discover_pages(
             "count": len(pages),
             "url": url
         }
-    except Ignore:
-        logger.info(f"[{job_id}] Discovery task cancelled, stopping chain")
-        raise
+    
     except Exception as e:
         logger.error(f"[{job_id}] Discovery failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -249,28 +283,87 @@ def _update_page_scrape_data(page_id: str, html_content: str, page_title: Option
 
 
 def _save_discovered_pages(job_id: str, pages: List[str]):
-    """Save discovered pages to database."""
+    """Save discovered pages to database with retry logic for race conditions."""
     # Import all related models to ensure SQLAlchemy mappers are configured
     from app.features.auth.models.user import User  # noqa: F401
     from app.features.sites.models.site import Site  # noqa: F401
     from app.features.scan.models.scan_job import ScanJob  # noqa: F401
     from app.features.scan.models.scan_page import ScanPage
+    from sqlalchemy.exc import IntegrityError
+    import psycopg2.errors
 
-    db = get_sync_db()
-    try:
-        for page_url in pages:
-            page = ScanPage(
-                scan_job_id=job_id,
-                page_url=page_url,
-                page_url_normalized=page_url.rstrip('/'),
-                is_selected_by_llm=False,
-                is_manually_selected=False,
-                is_manually_deselected=False
+    max_retries = 5
+    for attempt in range(max_retries):
+        db = get_sync_db()
+        try:
+            db.expire_all()
+            job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+            if not job:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Job {job_id} not found yet, retry {attempt + 1}/{max_retries}")
+                    db.close()
+                    time.sleep(0.5 * (1.5 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    raise Exception(f"Job {job_id} does not exist after {max_retries} retries")
+            
+            # Job exists, now insert pages
+            for page_url in pages:
+                page = ScanPage(
+                    scan_job_id=job_id,
+                    page_url=page_url,
+                    page_url_normalized=page_url.rstrip('/'),
+                    is_selected_by_llm=False,
+                    is_manually_selected=False,
+                    is_manually_deselected=False
+                )
+                db.add(page)
+            
+            db.commit()
+            logger.info(f"Successfully saved {len(pages)} pages for job {job_id}")
+            
+            # Verify pages were saved
+            def verify_pages_saved():
+                verify_db = get_sync_db()
+                try:
+                    verify_db.expire_all()  # Force fresh read
+                    count = verify_db.query(ScanPage).filter(
+                        ScanPage.scan_job_id == job_id
+                    ).count()
+                    return count == len(pages)
+                finally:
+                    verify_db.close()
+            
+            verify_db_update(
+                verify_func=verify_pages_saved,
+                max_retries=5,
+                delay_seconds=0.3,
+                error_message=f"Failed to verify {len(pages)} pages saved for job {job_id}"
             )
-            db.add(page)
-        db.commit()
-    finally:
-        db.close()
+            
+            logger.info(f"Verified {len(pages)} pages saved to DB for job {job_id}")
+            break  # Success, exit retry loop
+            
+        except IntegrityError as e:
+            db.rollback()
+            # Check if it's a foreign key violation
+            if isinstance(e.orig, psycopg2.errors.ForeignKeyViolation):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Foreign key violation for job {job_id}, retry {attempt + 1}/{max_retries}: {e}")
+                    db.close()
+                    time.sleep(0.5 * (1.5 ** attempt))  # Exponential backoff
+                    continue
+                else:
+                    logger.error(f"Foreign key violation persists after {max_retries} retries for job {job_id}")
+                    raise
+            else:
+                raise
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error saving pages for job {job_id}: {e}")
+            raise
+        finally:
+            db.close()
 
 
 # Phase 2: Selection
@@ -302,12 +395,7 @@ def select_pages(
     """
     from app.features.scan.services.analysis.page_selector import PageSelectorService
 
-    job_id = discovery_result["job_id"]
-
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Selection task cancelled before starting")
-        raise Ignore()
-    
+    job_id = discovery_result["job_id"] 
     pages = discovery_result["pages"]
 
     logger.info(
@@ -323,19 +411,11 @@ def select_pages(
             referer=referer,
             site_title=site_title
         )
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Selection task cancelled after LLM selection")
-            raise Ignore()
         
         _mark_selected_pages(job_id, selected)
 
         update_job_status(job_id, ScanJobStatus.selecting,
-                          pages_selected=len(selected))
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Selection task cancelled before returning")
-            raise Ignore()                  
+                          pages_selected=len(selected))              
 
         logger.info(f"[{job_id}] Selected {len(selected)} pages for analysis")
         return {
@@ -344,9 +424,6 @@ def select_pages(
             "count": len(selected),
             "total_discovered": len(pages)
         }
-    except Ignore:
-        logger.info(f"[{job_id}] Selection task cancelled")
-        raise
     except Exception as e:
         logger.error(f"[{job_id}] Selection failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -371,6 +448,26 @@ def _mark_selected_pages(job_id: str, selected_urls: List[str]):
                 page.is_selected_by_llm = True
 
         db.commit()
+        def verify_pages_marked():
+            verify_db = get_sync_db()
+            try:
+                verify_db.expire_all()  # Force fresh read
+                marked_count = verify_db.query(ScanPage).filter(
+                    ScanPage.scan_job_id == job_id,
+                    ScanPage.is_selected_by_llm == True
+                ).count()
+                return marked_count == len(selected_urls)
+            finally:
+                verify_db.close()
+        
+        verify_db_update(
+            verify_func=verify_pages_marked,
+            max_retries=5,
+            delay_seconds=0.3,
+            error_message=f"Failed to verify {len(selected_urls)} pages marked as selected for job {job_id}"
+        )
+        
+        logger.info(f"Verified {len(selected_urls)} pages marked as selected for job {job_id}")
     finally:
         db.close()
 
@@ -425,9 +522,6 @@ def scrape_page(
         Dict with scraped HTML and metadata (fully serializable)
     """
 
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Scrape task cancelled for {page_url}")
-        raise Ignore()
     
     from app.features.scan.services.scraping.scraping_service import ScrapingService
     
@@ -440,10 +534,6 @@ def scrape_page(
         if not scrape_result["success"]:
             logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
             raise Exception(scrape_result.get("error", "Unknown scraping error"))
-        
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Scrape task cancelled after scraping {page_url}")
-            raise Ignore()
         
         # Store basic scraping info in database
         if page_id and scrape_result["html"]:
@@ -466,10 +556,7 @@ def scrape_page(
         
         logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
         return result
-    
-    except Ignore:
-        logger.info(f"[{job_id}] Scrape task cancelled")
-        raise    
+       
     except Exception as e:
         logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
         raise
@@ -503,10 +590,6 @@ def extract_data(
     page_url = scrape_result["page_url"]
     page_id = scrape_result.get("page_id")
     html = scrape_result.get("html")
-
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Extract task cancelled for {page_url}")
-        raise Ignore()
     
     from app.features.scan.services.extraction.extractor_service import ExtractorService
     
@@ -518,10 +601,6 @@ def extract_data(
         
         # Extract all data using ExtractorService.extract_from_html
         extracted = ExtractorService.extract_from_html(html, page_url)
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Extract task cancelled after extraction for {page_url}")
-            raise Ignore()
         
         # Update database with extracted data
         if page_id:
@@ -537,9 +616,6 @@ def extract_data(
         logger.info(f"[{job_id}] Successfully extracted data from {page_url}")
         return result
     
-    except Ignore:
-        logger.info(f"[{job_id}] Extract task cancelled")
-        raise    
     except Exception as e:
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
         raise
@@ -597,9 +673,6 @@ def analyze_page(
     job_id: str
 ) -> Dict[str, Any]:
 
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Analyze task cancelled")
-        raise Ignore()
 
     from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
     from app.features.scan.models.scan_job import ScanJobStatus
@@ -620,10 +693,6 @@ def analyze_page(
         # Pass extracted_data which has the format: {status_code, status, message, data}
         analysis_result = PageAnalyzerService.analyze_page(extracted_data)
 
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Analyze task cancelled after LLM analysis for {page_url}")
-            raise Ignore()
-
         analysis = _transform_analysis_result(analysis_result)
 
         _update_page_analysis(page_id, analysis, analysis_result)
@@ -639,10 +708,6 @@ def analyze_page(
             "analysis": analysis,
             "detailed_analysis": analysis_result
         }
-    
-    except Ignore:
-        logger.info(f"[{job_id}] Analyze task cancelled")
-        raise
     except Exception as e:
         logger.error(
             f"[{job_id}] Analysis failed for {page_url}: {e}",
@@ -847,6 +912,31 @@ def _update_page_analysis(
             page.scanned_at = datetime.utcnow()
             db.commit()
 
+            def verify_analysis_saved():
+                verify_db = get_sync_db()
+                try:
+                    verify_db.expire_all()  # Force fresh read
+                    verified_page = verify_db.query(ScanPage).filter(
+                        ScanPage.id == page_id
+                    ).first()
+                    return (
+                        verified_page and
+                        verified_page.score_overall == analysis.get("overall_score") and
+                        verified_page.scanned_at is not None
+                    )
+                finally:
+                    verify_db.close()
+            
+            verify_db_update(
+                verify_func=verify_analysis_saved,
+                max_retries=5,
+                delay_seconds=0.3,
+                error_message=f"Failed to verify analysis saved for page {page_id}"
+            )
+
+            logger.info(f"Verified page {page_id} analysis saved to DB")
+            
+
             logger.info(f"Updated page {page_id} with analysis scores")
             
             # Create individual ScanIssue records from problems in detailed_analysis
@@ -953,9 +1043,6 @@ def aggregate_results(
     Returns:
         Dict with aggregated scores and summary
     """
-
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     if isinstance(analysis_results, dict):
         analysis_results = [analysis_results]
@@ -1003,7 +1090,8 @@ def aggregate_results(
 
     except Exception as e:
         logger.error(f"[{job_id}] Aggregation failed: {e}")
-        update_job_status(job_id, "failed", error_message=str(e))
+        from app.features.scan.models.scan_job import ScanJobStatus
+        update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
         raise
 
 
@@ -1012,14 +1100,14 @@ def _update_job_final_scores(job_id: str, scores: Dict):
     # Import all related models to ensure SQLAlchemy mappers are configured
     from app.features.auth.models.user import User  # noqa: F401
     from app.features.sites.models.site import Site  # noqa: F401
-    from app.features.scan.models.scan_job import ScanJob
+    from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
     from app.features.scan.models.scan_page import ScanPage  # noqa: F401
 
     db = get_sync_db()
     try:
         job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
         if job:
-            job.status = "completed"
+            job.status = ScanJobStatus.completed
             job.score_overall = scores.get("score_overall")
             job.score_seo = scores.get("score_seo")
             job.score_accessibility = scores.get("score_accessibility")
@@ -1030,7 +1118,9 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             job.completed_at = datetime.utcnow()
             db.commit()
             
-            # NEW: Trigger scan complete notification
+            logger.info(f"Job {job_id} marked as completed with score {scores.get('score_overall')}")
+            
+            # Trigger scan complete notification
             send_scan_notification(
                 user_id=str(job.user_id),
                 title="Scan Complete! 🎉",
@@ -1039,6 +1129,8 @@ def _update_job_final_scores(job_id: str, scores: Dict):
                 priority="medium",
                 action_url=f"/scans/{job_id}"
             )
+        else:
+            logger.error(f"Job {job_id} not found when trying to update final scores")
     finally:
         db.close()
 
@@ -1077,8 +1169,6 @@ def run_scan_pipeline(
     Returns:
         Job ID for tracking
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     logger.info(f"[{job_id}] Starting scan pipeline for {url}")
 
@@ -1113,8 +1203,6 @@ def process_selected_pages(
 
     Creates a chord: parallel page processing -> aggregation
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     selected_pages = selection_result.get("selected_pages", [])
 
