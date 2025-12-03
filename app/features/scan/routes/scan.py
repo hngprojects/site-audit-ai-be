@@ -23,6 +23,7 @@ from app.features.sites.models.site import Site
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
 from app.features.scan.services.orchestration.history import get_user_scan_history
+from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.db.session import get_db
 
@@ -215,8 +216,7 @@ async def start_scan_async(
     try:
         url_str = str(data.url)
         parsed = urlparse(url_str)
-        
-        # Extract user_id from token if authenticated
+
         user_id = None
         if credentials:
             try:
@@ -224,24 +224,19 @@ async def start_scan_async(
                 payload = decode_access_token(credentials.credentials)
                 user_id = payload.get("sub")
             except Exception as e:
-                pass  # If token is invalid, treat as anonymous
+                pass 
         
-        # Fallback to request body user_id if not authenticated
         if not user_id:
             user_id = data.user_id
         
-        # Generate device_id for anonymous users (needed for both Site and ScanJob)
         device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
         
-        # Check if Site exists for this user (or anonymous), create if not
         if user_id:
-            # For authenticated users, check for their site
             site_query = select(Site).where(
                 Site.root_url == url_str,
                 Site.user_id == user_id
             )
         else:
-            # For anonymous users, check for anonymous site by device_id
             site_query = select(Site).where(
                 Site.root_url == url_str,
                 Site.device_id == device_id
@@ -259,7 +254,6 @@ async def start_scan_async(
             db.add(site)
             await db.flush() 
         
-        # Create ScanJob with queued status
         
         scan_job = ScanJob(
             user_id=user_id,
@@ -269,16 +263,18 @@ async def start_scan_async(
             queued_at=datetime.utcnow()
         )
         db.add(scan_job)
+        await db.flush()
         await db.commit()
         await db.refresh(scan_job)
         
-        # Queue the scan pipeline to Celery
-        run_scan_pipeline.delay(
+        task_result = run_scan_pipeline.delay(
             job_id=scan_job.id,
             url=url_str,
             top_n=data.top_n,
             max_pages=1
         )
+        scan_job.celery_task_id = task_result.id
+        await db.commit()
         
         logger.info(f"Queued async scan job {scan_job.id} for {url_str}")
         
@@ -572,3 +568,22 @@ async def get_scan_pages(
             message=f"Error fetching scan pages: {str(e)}",
             data={}
         )
+
+@router.post("/{job_id}/stop")
+async def stop_scan(
+    job_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    success = await stop_scan_job(job_id, db)
+    if not success:
+        return api_response(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message=f"Scan job {job_id} not found",
+            data={}
+        )
+    return api_response(
+        data={"job_id": job_id, "status": "cancelled"},
+        message="Scan stopped successfully",
+        status_code=status.HTTP_200_OK
+    )
+
