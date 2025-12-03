@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from celery import shared_task, chain, group, chord
-from celery.exceptions import Retry, Ignore
+from celery.exceptions import Retry
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.platform.celery_app import celery_app
 from app.features.auth.models.user import User 
@@ -28,17 +28,6 @@ def get_sync_db():
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return SessionLocal()
 
-
-def check_job_cancelled(job_id: str) -> bool: 
-    db = get_sync_db()
-    try:
-        job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
-        if job and job.status == ScanJobStatus.cancelled:
-            logger.info(f"[{job_id}] Job is cancelled, skipping task")
-            return True
-        return False
-    finally:
-        db.close()
 
 async def _send_scan_notification_async(
     user_id: str,
@@ -178,8 +167,6 @@ def discover_pages(
     Returns:
         Dict with discovered pages and metadata
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 
@@ -192,19 +179,11 @@ def discover_pages(
         discovery_service = PageDiscoveryService()
         pages = discovery_service.discover_pages(url=url, max_pages=max_pages)
 
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Discovery task cancelled after page discovery")
-            raise Ignore()
-
         # Store discovered pages in DB
         _save_discovered_pages(job_id, pages)
 
         update_job_status(job_id, ScanJobStatus.discovering,
                           pages_discovered=len(pages))
-        
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Discovery task cancelled before returning")
-            raise Ignore()
 
         logger.info(f"[{job_id}] Discovered {len(pages)} pages")
         return {
@@ -213,9 +192,7 @@ def discover_pages(
             "count": len(pages),
             "url": url
         }
-    except Ignore:
-        logger.info(f"[{job_id}] Discovery task cancelled, stopping chain")
-        raise
+    
     except Exception as e:
         logger.error(f"[{job_id}] Discovery failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -302,12 +279,7 @@ def select_pages(
     """
     from app.features.scan.services.analysis.page_selector import PageSelectorService
 
-    job_id = discovery_result["job_id"]
-
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Selection task cancelled before starting")
-        raise Ignore()
-    
+    job_id = discovery_result["job_id"] 
     pages = discovery_result["pages"]
 
     logger.info(
@@ -323,19 +295,11 @@ def select_pages(
             referer=referer,
             site_title=site_title
         )
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Selection task cancelled after LLM selection")
-            raise Ignore()
         
         _mark_selected_pages(job_id, selected)
 
         update_job_status(job_id, ScanJobStatus.selecting,
-                          pages_selected=len(selected))
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Selection task cancelled before returning")
-            raise Ignore()                  
+                          pages_selected=len(selected))              
 
         logger.info(f"[{job_id}] Selected {len(selected)} pages for analysis")
         return {
@@ -344,9 +308,6 @@ def select_pages(
             "count": len(selected),
             "total_discovered": len(pages)
         }
-    except Ignore:
-        logger.info(f"[{job_id}] Selection task cancelled")
-        raise
     except Exception as e:
         logger.error(f"[{job_id}] Selection failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
@@ -425,9 +386,6 @@ def scrape_page(
         Dict with scraped HTML and metadata (fully serializable)
     """
 
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Scrape task cancelled for {page_url}")
-        raise Ignore()
     
     from app.features.scan.services.scraping.scraping_service import ScrapingService
     
@@ -440,10 +398,6 @@ def scrape_page(
         if not scrape_result["success"]:
             logger.error(f"[{job_id}] Scraping failed for {page_url}: {scrape_result.get('error')}")
             raise Exception(scrape_result.get("error", "Unknown scraping error"))
-        
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Scrape task cancelled after scraping {page_url}")
-            raise Ignore()
         
         # Store basic scraping info in database
         if page_id and scrape_result["html"]:
@@ -466,10 +420,7 @@ def scrape_page(
         
         logger.info(f"[{job_id}] Successfully scraped {page_url} ({scrape_result['content_length']} bytes)")
         return result
-    
-    except Ignore:
-        logger.info(f"[{job_id}] Scrape task cancelled")
-        raise    
+       
     except Exception as e:
         logger.error(f"[{job_id}] Scraping failed for {page_url}: {e}")
         raise
@@ -503,10 +454,6 @@ def extract_data(
     page_url = scrape_result["page_url"]
     page_id = scrape_result.get("page_id")
     html = scrape_result.get("html")
-
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Extract task cancelled for {page_url}")
-        raise Ignore()
     
     from app.features.scan.services.extraction.extractor_service import ExtractorService
     
@@ -518,10 +465,6 @@ def extract_data(
         
         # Extract all data using ExtractorService.extract_from_html
         extracted = ExtractorService.extract_from_html(html, page_url)
-
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Extract task cancelled after extraction for {page_url}")
-            raise Ignore()
         
         # Update database with extracted data
         if page_id:
@@ -537,9 +480,6 @@ def extract_data(
         logger.info(f"[{job_id}] Successfully extracted data from {page_url}")
         return result
     
-    except Ignore:
-        logger.info(f"[{job_id}] Extract task cancelled")
-        raise    
     except Exception as e:
         logger.error(f"[{job_id}] Extraction failed for {page_url}: {e}")
         raise
@@ -597,9 +537,6 @@ def analyze_page(
     job_id: str
 ) -> Dict[str, Any]:
 
-    if check_job_cancelled(job_id):
-        logger.info(f"[{job_id}] Analyze task cancelled")
-        raise Ignore()
 
     from app.features.scan.services.analysis.page_analyzer import PageAnalyzerService
     from app.features.scan.models.scan_job import ScanJobStatus
@@ -620,10 +557,6 @@ def analyze_page(
         # Pass extracted_data which has the format: {status_code, status, message, data}
         analysis_result = PageAnalyzerService.analyze_page(extracted_data)
 
-        if check_job_cancelled(job_id):
-            logger.info(f"[{job_id}] Analyze task cancelled after LLM analysis for {page_url}")
-            raise Ignore()
-
         analysis = _transform_analysis_result(analysis_result)
 
         _update_page_analysis(page_id, analysis, analysis_result)
@@ -639,10 +572,6 @@ def analyze_page(
             "analysis": analysis,
             "detailed_analysis": analysis_result
         }
-    
-    except Ignore:
-        logger.info(f"[{job_id}] Analyze task cancelled")
-        raise
     except Exception as e:
         logger.error(
             f"[{job_id}] Analysis failed for {page_url}: {e}",
@@ -953,9 +882,6 @@ def aggregate_results(
     Returns:
         Dict with aggregated scores and summary
     """
-
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     if isinstance(analysis_results, dict):
         analysis_results = [analysis_results]
@@ -1077,8 +1003,6 @@ def run_scan_pipeline(
     Returns:
         Job ID for tracking
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     logger.info(f"[{job_id}] Starting scan pipeline for {url}")
 
@@ -1113,8 +1037,6 @@ def process_selected_pages(
 
     Creates a chord: parallel page processing -> aggregation
     """
-    if check_job_cancelled(job_id):
-        raise Ignore()
     
     selected_pages = selection_result.get("selected_pages", [])
 
