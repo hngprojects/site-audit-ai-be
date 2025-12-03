@@ -1,0 +1,94 @@
+Site Audit AI Celery Flow
+=========================
+
+High level picture
+------------------
+1. User hits a FastAPI endpoint to start a scan.
+2. FastAPI writes a `ScanJob` row then sends Celery tasks.
+3. Celery workers run every phase in order: discover pages → select pages → scrape → extract → analyze → aggregate.
+4. Results are stored back in PostgreSQL and surfaced through the API.
+
+Actors in our deployment
+------------------------
+- FastAPI process: produces tasks with `.delay()` or `chain()`.
+- RabbitMQ (broker): reachable at `amqp://guest:guest@localhost:5672//`.
+- Redis (result backend): `redis://localhost:6379/0`, holds task states.
+- Celery worker: started with `celery -A app.platform.celery_app worker --concurrency=4 -P solo --loglevel=info` (use higher concurrency on Linux servers).
+- Celery beat (optional): `celery -A app.platform.celery_app beat --loglevel=info` to schedule periodic scans.
+
+Queues and what they do
+-----------------------
+Queue name         | Purpose
+-------------------|-----------------------------------------------------------
+`scan.orchestration` | High level orchestration tasks (`run_scan_pipeline`, `process_selected_pages`).
+`scan.discovery`     | Selenium crawler that finds URLs.
+`scan.selection`     | LLM call that filters the URLs.
+`scan.scraping`      | Pulls raw HTML for each selected URL.
+`scan.extraction`    | Parses HTML into structured data.
+`scan.analysis`      | LLM scoring of UX/SEO/Performance.
+`scan.aggregation`   | Combines per-page scores into a site report.
+`celery`             | Default queue; we use it for periodic helper tasks.
+
+Task chain for `run_scan_pipeline`
+----------------------------------
+1. `discover_pages`: crawls up to `max_pages` URLs, saves them into `scan_pages` table.
+2. `select_pages`: picks `top_n` URLs using OpenRouter and marks them in DB.
+3. `process_selected_pages` (not shown above): builds a chord of per-page tasks.
+   - For each selected URL we run `scrape_page` → `extract_data` → `analyze_page` as a mini-chain.
+4. `aggregate_results`: runs after all pages finish to update the `ScanJob` summary.
+
+How `process_selected_pages` fans out work
+------------------------------------------
+- Looks up the selected pages and their DB IDs.
+- Creates Celery `chain(scrape_page.s(...), extract_data.s(), analyze_page.s())` for each page.
+- Wraps them in a `group` or `chord` so they run in parallel.
+- After the group, `aggregate_results` runs exactly once.
+
+Database touch points
+---------------------
+- Discovery inserts `ScanPage` rows.
+- Scraping updates page title, content length, content hash.
+- Extraction stores structured blocks (headers, links, meta tags, etc.).
+- Analysis creates `ScanIssue` rows and updates per-page scores.
+- Aggregation updates overall job scores, statuses, and completion timestamps.
+
+Status tracking
+---------------
+- Helper `update_job_status` runs inside workers using a synchronous SQLAlchemy session.
+- Each phase flips the `ScanJob.status` enum (discovering → selecting → scraping → analyzing → aggregating → completed or failed).
+- Errors mark the job as `failed` and store `error_message`.
+
+Retry and failure behavior
+--------------------------
+- Discovery retries up to three times with exponential backoff for transient network errors.
+- Selection retries automatically on API hiccups.
+- Scrape/extract/analyze tasks log errors per page but keep the rest of the chord running.
+- Because we set `task_acks_late`, a worker crash puts the message back into the queue automatically.
+
+Scaling guidelines
+------------------
+- More workers = more parallel pages. Start multiple worker processes pointing to the same broker.
+- Concurrency should match CPU cores when using prefork pool (Linux). On Windows we use `solo` pool so concurrency=1 per worker process; start multiple terminal windows to scale.
+- Use queue-based routing to split heavy vs light phases. If analysis is slow, start extra workers that only listen to `scan.analysis` using `-Q scan.analysis` flag.
+
+Operational commands
+--------------------
+- Start orchestration worker only: `celery -A app.platform.celery_app worker -Q scan.orchestration --loglevel=info`.
+- Start all queues (default): `celery -A app.platform.celery_app worker --loglevel=info`.
+- Purge backlog (dangerous): `celery -A app.platform.celery_app purge -f` empties every queue.
+- List queues inside RabbitMQ: `rabbitmqctl list_queues`.
+
+Troubleshooting checklist
+-------------------------
+1. Task stuck in `PENDING`: worker is not running or cannot reach RabbitMQ.
+2. Queue size growing: add more workers on that queue or check for failures.
+3. Frequent retries: inspect logs for network/API errors, maybe increase timeouts.
+4. Database locked: verify each task closes its session (we already do this).
+5. Beat not firing: ensure the beat process is running and that at least one worker listens to the `celery` queue.
+
+Key files to read
+-----------------
+- `app/platform/celery_app.py`: defines broker/result backend, queues, routing, beat schedule.
+- `app/features/scan/workers/tasks.py`: actual task functions.
+- `app/features/scan/workers/periodic_tasks.py`: hourly scheduler for periodic site scans and emails.
+- `docs/celery_rabbitmq_lecture.txt`: plain-language refresher on the underlying concepts.

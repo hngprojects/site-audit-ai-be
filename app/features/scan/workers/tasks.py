@@ -1062,10 +1062,10 @@ def aggregate_results(
             count = len(valid_results)
 
             aggregated = {
-                "score_overall": sum(r["analysis"].get("overall_score", 0) for r in valid_results) // count if count else 0,
-                "score_seo": sum(r["analysis"].get("score_seo", 0) for r in valid_results) // count if count else 0,
-                "score_accessibility": sum(r["analysis"].get("score_accessibility", 0) for r in valid_results) // count if count else 0,
-                "score_performance": sum(r["analysis"].get("score_performance", 0) for r in valid_results) // count if count else 0,
+                "score_overall": sum((r["analysis"].get("overall_score") or 0) for r in valid_results) // count if count else 0,
+                "score_seo": sum((r["analysis"].get("score_seo") or 0) for r in valid_results) // count if count else 0,
+                "score_accessibility": sum((r["analysis"].get("score_accessibility") or 0) for r in valid_results) // count if count else 0,
+                "score_performance": sum((r["analysis"].get("score_performance") or 0) for r in valid_results) // count if count else 0,
                 "total_issues": _count_scan_issues(job_id),
                 "pages_analyzed": count
             }
