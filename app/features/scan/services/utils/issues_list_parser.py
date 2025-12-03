@@ -12,19 +12,19 @@ def parse_detailed_audit_report(data: Dict[str, Any]) -> Dict[str, Any]:
 
     category_titles = {
         "seo": "Visibility",
-        "usability": "Not Mobile-Friendly",
+        "accessibility": "Not Mobile-Friendly",
         "performance": "Slow Loading Speed"
     }
 
     category_sections = {
         "seo": "Search Engine Optimization",
         "performance": "Performance",
-        "usability": "Mobile Experience",
+        "accessibility": "Mobile Experience",
     }
 
     categories = []
 
-    for category_key in ["seo", "performance", "usability"]:
+    for category_key in ["seo", "performance", "accessibility"]:
         category_issues = [
             issue for issue in issues if issue["category"] == category_key]
 

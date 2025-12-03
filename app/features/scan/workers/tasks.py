@@ -724,11 +724,11 @@ def analyze_page(
 def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
     """
     Transform PageAnalysisResult dict to database-friendly format.
-    Maps LLM output (Usability/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
+    Maps LLM output (accessibility/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
 
     Args:
         analysis_result: Dict from PageAnalyzerService with nested structure:
-            {overall_score, usability: {score, ...}, performance: {score, ...}, seo: {score, ...}}
+            {overall_score, accessibility: {score, ...}, performance: {score, ...}, seo: {score, ...}}
 
     Returns:
         Dict with flat structure for database storage
@@ -736,7 +736,7 @@ def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
 
     return {
         "overall_score": analysis_result.get("overall_score"),
-        "score_accessibility": analysis_result.get("usability_score"),
+        "score_accessibility": analysis_result.get("accessibility_score"),
         "score_performance": analysis_result.get("performance_score"),
         "score_seo": analysis_result.get("seo_score"),
     }
@@ -786,8 +786,8 @@ def _create_scan_issues(
     try:
         # Extract problems from each category
         categories_map = {
-            # Usability problems map to accessibility
-            "usability": IssueCategory.accessibility,
+            # accessibility problems map to accessibility
+            "accessibility": IssueCategory.accessibility,
             "performance": IssueCategory.performance,
             "seo": IssueCategory.seo,
         }

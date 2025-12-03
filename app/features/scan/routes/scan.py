@@ -526,7 +526,7 @@ async def get_scan_issues(job_id: str, db: AsyncSession = Depends(get_db)):
                 "scanned_at": job.completed_at,
                 "score_overall": score_overall,
                 "score_seo": job.score_seo or 0,
-                "score_usability": job.score_accessibility or 0,
+                "score_accessibility": job.score_accessibility or 0,
                 "score_performance": job.score_performance or 0,
                 "summary": generate_summary_message(score_overall),
                 "issues": [
