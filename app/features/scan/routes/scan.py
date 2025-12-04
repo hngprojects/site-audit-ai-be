@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from fastapi import Depends
 from datetime import datetime
 from urllib.parse import urlparse
@@ -312,7 +313,7 @@ async def get_scan_history(
         db: Database session
 
     Returns:
-        List of ScanHistoryItem with summary of past scans
+        List of past scans
     """
 
     logger.info(
@@ -320,6 +321,77 @@ async def get_scan_history(
 
     scans = await get_user_scan_history(user_id=current_user.id, db=db, limit=limit)
     return scans
+
+@router.get("/scans", status_code=200)
+async def list_user_scans(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all websites the user has scanned, with the site URL and the date of their latest scan.
+    
+    Returns:
+        List of ScanHistoryItem with summary of past scans
+    """
+    try:
+        latest_scan_subq = (
+            select(
+                ScanJob.site_id,
+                func.max(ScanJob.updated_at).label("last_scan_date")
+            )
+            .where(
+                ScanJob.user_id == current_user.id,
+                ScanJob.updated_at.isnot(None),
+                ScanJob.status == 'completed'
+            )
+            .group_by(ScanJob.site_id)
+        ).subquery()
+
+        latest_scan = aliased(ScanJob)
+
+        stmt = (
+            select(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url.label("site_url"),
+                latest_scan_subq.c.last_scan_date
+            )
+            .join(
+                latest_scan,
+                (latest_scan.site_id == latest_scan_subq.c.site_id) &
+                (latest_scan.updated_at == latest_scan_subq.c.last_scan_date)
+            )
+            .join(
+                ScanPage,
+                ScanPage.scan_job_id == latest_scan.id
+            )
+            .group_by(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url,
+                latest_scan_subq.c.last_scan_date
+            )
+            .order_by(latest_scan_subq.c.last_scan_date.desc())
+        )
+
+        result = await db.execute(stmt)
+        sites = result.all()
+
+        data = [
+            {
+                "site_id": site.site_id,
+                "site_url": site.site_url,
+                "last_scan_date": site.last_scan_date.isoformat() + "Z" if site.last_scan_date else None
+            }
+            for site in sites
+        ]
+
+        return api_response(data=data)
+
+    except Exception as e:
+        return api_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message=f"Error fetching user websites: {str(e)}",
+            data={}
+        )
 
 
 @router.get("/{job_id}/status", response_model=ScanStatusResponse)
