@@ -1,8 +1,10 @@
 import os
 from logging.config import fileConfig
 
+
 from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import pool, text
+import alembic_postgresql_enum  # noqa
 
 from alembic import context
 from dotenv import load_dotenv
@@ -14,7 +16,18 @@ from app.platform.db.base import Base
 from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
-from app.features.sites.models.site import Site 
+from app.features.support.models.support_ticket import SupportTicket
+from app.features.sites.models.site import Site
+from app.features.scan.models.scan_job import ScanJob
+from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.models.scan_issue import ScanIssue
+from app.features.scan.models.device_session import DeviceSession 
+from app.features.request_form.models.request_form import RequestForm
+from app.features.leads.models.lead_model import Lead
+from app.features.referral.models.referral_link import ReferralLink, ReferralClick
+from app.features.referral.models.share_message_template import ShareMessageTemplate
+
+from app.features.notifications.models.notifications import Notification, NotificationSettings
 
 load_dotenv()
 
@@ -83,6 +96,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        #connection.execute(text("DROP TYPE IF EXISTS sitestatus CASCADE"))
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

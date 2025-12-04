@@ -1,0 +1,29 @@
+{% extends "base_email.html" %}
+
+{% block title %}Verify Your Email{% endblock %}
+
+{% block content %}
+    <div class="text-center">
+        <h2>Verify Your Email</h2>
+    </div>
+    
+    <p>Hi {{ first_name }},</p>
+    <p>Thanks for signing up for Sitelytics! To get started, please verify your email address using the code below.</p>
+    
+    <p>For security reasons this code will expire in 10 minutes.</p>
+
+    <div class="text-center">
+        <div class="code-box">
+            <span class="code-box-span">
+                {{ otp_code }}
+            </span>
+        </div>
+        <p class="text-warning">This is your verification code</p>
+    </div>
+
+    <p style="font-size: 14px; margin-top: 30px;">
+        If you didn't sign up for an account, you can safely ignore this email.
+    </p>
+
+    <p>Welcome aboard,<br>The Sitelytics Team</p>
+{% endblock %}

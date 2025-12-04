@@ -1,0 +1,23 @@
+{% extends "base_email.html" %}
+
+{% block title %}Welcome to Sitelytics{% endblock %}
+
+{% block content %}
+    <div class="text-center">
+        <h2>Welcome To Sitelytics</h2>
+        <p style="font-size: 14px; color: #888;">Your new account is ready</p>
+        <h3>Now your website has someone watching it for you</h3>
+    </div>
+
+    <p>Hi {{ first_name }},</p>
+    <p>Welcome to Sitelytics - your dashboard is now set up and ready.</p>
+    <p>From here, we will help you stay on top of your website's health, visibility, and customer experience.</p>
+
+    <div class="highlight-box">
+        <h3>Get a free review on your website</h3>
+        <p style="font-size: 14px;">It's a simple, human walkthrough of your website issues and opportunities - no tech talk, no pressure.</p>
+         <div class="text-center">
+            <a href="{{ action_url }}" class="btn">Get My Review</a>
+        </div>
+    </div>
+{% endblock %}

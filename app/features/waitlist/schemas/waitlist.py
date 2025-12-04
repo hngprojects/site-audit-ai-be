@@ -1,20 +1,26 @@
-from pydantic import BaseModel, EmailStr
 from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
+
 
 class WaitlistIn(BaseModel):
     name: str
     email: EmailStr
+    # referred_by: str | None = None
+
 
 class WaitlistOut(BaseModel):
     id: UUID
     name: str
     email: EmailStr
+    # referral_code: str
+    # referred_by: str | None = None
+    # referral_count: int
 
     class Config:
         from_attributes = True
 
 
-# Standardized API Response Schema
 class WaitlistResponse(BaseModel):
     status_code: int
     success: bool

@@ -1,8 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, field_serializer
-from datetime import datetime
-from typing import Optional
 import re
 import uuid
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field, field_serializer, field_validator
 
 
 class SignupRequest(BaseModel):
@@ -121,8 +122,33 @@ class PasswordResetConfirm(BaseModel):
 class UpdateProfileRequest(BaseModel):
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    phone_number: Optional[str] = Field(None, min_length=10, max_length=20, description="Phone number in international format")
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    phone_number: Optional[str] = Field(
+        None, min_length=10, max_length=20, description="Phone number in international format"
+    )
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone_number(cls, v: Optional[str]) -> Optional[str]:
+        """Validate phone number contains only digits, spaces, +, -, and parentheses"""
+        if v is None:
+            return v
+        
+        # Remove all whitespace for validation
+        cleaned = v.strip()
+        
+        # Check if phone number contains only valid characters: digits, +, -, spaces, and parentheses
+        if not re.match(r'^[\d\s\+\-\(\)]+$', cleaned):
+            raise ValueError("Phone number can only contain digits, spaces, +, -, and parentheses")
+        
+        # Extract only digits to check minimum length
+        digits_only = re.sub(r'[^\d]', '', cleaned)
+        if len(digits_only) < 10:
+            raise ValueError("Phone number must contain at least 10 digits")
+        
+        if len(digits_only) > 15:
+            raise ValueError("Phone number cannot exceed 15 digits")
+        
+        return cleaned
 
 
 class ChangePasswordRequest(BaseModel):
@@ -133,13 +159,13 @@ class ChangePasswordRequest(BaseModel):
     @classmethod
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not re.search(r'[A-Z]', v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
-            raise ValueError('Password must contain at least one digit')
+            raise ValueError("Password must be at least 8 characters long")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
         return v
 
 
@@ -151,6 +177,7 @@ class GoogleAuthRequest(BaseModel):
 class VerifyEmailRequest(BaseModel):
     email: EmailStr
     otp: str
+
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
