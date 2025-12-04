@@ -27,7 +27,8 @@ async def list_user_scans(
             )
             .where(
                 ScanJob.user_id == current_user.id,
-                ScanJob.updated_at.isnot(None)
+                ScanJob.updated_at.isnot(None),
+                ScanJob.status == 'completed'
             )
             .group_by(ScanJob.site_id)
         ).subquery()
