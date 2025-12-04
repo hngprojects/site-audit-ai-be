@@ -9,17 +9,14 @@ class IssueCategory(enum.Enum):
     """Issue category classification"""
     seo = "seo"
     accessibility = "accessibility"
-    design = "design"
     performance = "performance"
 
 
 class IssueSeverity(enum.Enum):
     """Issue severity levels"""
-    critical = "critical"
     high = "high"
     medium = "medium"
     low = "low"
-    info = "info"
 
 
 class ScanIssue(BaseModel):
@@ -41,15 +38,13 @@ class ScanIssue(BaseModel):
     # Issue details
     title = Column(String(512), nullable=False)
     description = Column(Text, nullable=False)
-    what_this_means = Column(Text, nullable=True)
     recommendation = Column(Text, nullable=True)
+    
+    business_impact = Column(Text, nullable=True)
 
     # Element context (if applicable)
     element_selector = Column(String(512), nullable=True)  # CSS selector
     element_html = Column(Text, nullable=True)  # Snippet of problematic HTML
-    
-    # Impact assessment
-    impact_score = Column(Float, nullable=True)  # 0.0-10.0
     
     # Constraints
     __table_args__ = (

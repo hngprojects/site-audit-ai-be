@@ -1,54 +1,16 @@
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
+from copy import deepcopy
 from datetime import datetime
 from pydantic import BaseModel, Field
+from app.features.scan.schemas.page_analyzer import PageAnalysisResult
 from openai import OpenAI
 import json
 
 from app.platform.config import settings
 
 logger = logging.getLogger(__name__)
-
-class Problem(BaseModel):
-    icon: str = Field(description="warning or alert icon type")
-    title: str = Field(description="Short problem title")
-    description: str = Field(description="Detailed problem description")
-
-class PageAnalysisResult(BaseModel):
-    url: str = Field(description="URL of the analyzed page")
-    overall_score: int = Field(description="Overall page score out of 100")
-    scan_date: str = Field(description="Timestamp of when the scan was performed")
-
-    ux_score: int = Field(description="UX score out of 100")
-    ux_title: str = Field(description="UX section title (e.g., 'Usability')")
-    ux_impact_message: str = Field(
-        description="How UX issues affect business (2-3 sentences)")
-    ux_impact_score: int = Field(description="UX impact score")
-    ux_business_benefits: list[str] = Field(
-        description="3-4 bullet points of business benefits of fixing UX issues")
-    ux_problems: list[Problem] = Field(
-        description="List of specific UX problems found")
-
-    performance_score: int = Field(description="Performance score out of 100")
-    performance_title: str = Field(description="Performance section title")
-    performance_impact_message: str = Field(
-        description="How performance issues affect business (2-3 sentences)")
-    performance_impact_score: int = Field(description="Performance impact score")
-    performance_business_benefits: list[str] = Field(
-        description="3-4 bullet points of business benefits of fixing performance issues")
-    performance_problems: list[Problem] = Field(
-        description="List of specific performance problems found")
-
-    seo_score: int = Field(description="SEO score out of 100")
-    seo_title: str = Field(description="SEO section title")
-    seo_impact_message: str = Field(
-        description="How SEO issues affect business (2-3 sentences)")
-    seo_impact_score: int = Field(description="SEO impact score")
-    seo_business_benefits: list[str] = Field(
-        description="3-4 bullet points of business benefits of fixing SEO issues")
-    seo_problems: list[Problem] = Field(
-        description="List of specific SEO problems found")
 
 
 class ExtractorResponse(BaseModel):
@@ -101,8 +63,10 @@ class PageAnalyzerService:
                 prepared_data)
 
             raw = PageAnalyzerService._call_llm(analysis_prompt)
-            result = PageAnalyzerService._clean_up_llm_response(raw.model_dump())
-            
+
+            result = PageAnalyzerService._merge_llm_with_formula(
+                raw.model_dump(), prepared_data)
+
             logger.info(
                 f"Page analysis complete: {result.get('overall_score')}/100 for {result.get('url')}")
             return result
@@ -194,16 +158,100 @@ class PageAnalyzerService:
             raise
 
     @staticmethod
+    def _calculate_formula_scores(prepared_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate formula-based scores using a configurable scoring map.
+        Easier to maintain and extend.
+        """
+        acc_issues = prepared_data['accessibility_issues']
+        seo_issues = prepared_data['seo_issues']
+
+        score_map = {
+            "usability": [
+                {"value": len(acc_issues['images_missing_alt']), "weight": 0.4, "total": max(
+                    prepared_data['images_count'], 1)},
+                {"value": len(acc_issues['inputs_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['inputs_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['buttons_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['buttons_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['links_missing_label']), "weight": 0.15, "total": max(
+                    len(acc_issues['links_missing_label']) + 1, 1)},
+                {"value": len(acc_issues['empty_headings']), "weight": 0.15, "total": max(
+                    len(acc_issues['empty_headings']), 1)},
+            ],
+            "performance": [
+                {"value": prepared_data['images_count'],
+                    "weight": 0.5, "total": 100},
+                {"value": prepared_data['headings_count'],
+                    "weight": 0.5, "total": 100},
+                {"value": prepared_data['word_count'],
+                    "weight": 1/5000, "total": 100},
+            ],
+            "seo": [
+                {"value": seo_issues.get(
+                    'total_issues', 0) * 2, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'has_title') else 5, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'has_description') else 5, "weight": 1, "total": 100},
+                {"value": 0 if seo_issues.get(
+                    'canonical_url') else 2, "weight": 1, "total": 100},
+            ]
+        }
+
+        formula_scores = {}
+
+        for section, rules in score_map.items():
+            if section == "usability":
+                weighted_pct = sum(
+                    rule['weight'] * (rule['value'] / rule['total']) for rule in rules)
+                score = max(0, 100 * (1 - weighted_pct))
+            else:
+                score = max(0, 100 - sum(rule['value'] for rule in rules))
+            formula_scores[f"{section}_score_formula"] = round(score)
+
+        return formula_scores
+
+    @staticmethod
+    def _merge_llm_with_formula(llm_response: dict, prepared_data: dict) -> dict:
+        """
+        Merge Gemini LLM response with formula-based scores to get final averaged scores.
+
+        Args:
+            llm_response (dict): Response from Gemini LLM
+            prepared_data (dict): Prepared page data to calculate formula scores
+
+        Returns:
+            dict: Updated LLM response with averaged scores
+        """
+
+        merged_response = llm_response.copy()
+
+        formula_scores = PageAnalyzerService._calculate_formula_scores(
+            prepared_data)
+
+        for section in ["usability", "performance", "seo"]:
+            llm_score = merged_response[section + "_score"]
+            formula_score = formula_scores[f"{section}_score_formula"]
+
+            merged_response[section + "_score"] = round(
+                (llm_score + formula_score) / 2)
+
+        merged_response["overall_score"] = round(
+            (merged_response["usability_score"] + merged_response["seo_score"] + merged_response["performance_score"]) / 3)
+
+        return merged_response
+
+    @staticmethod
     def _build_analysis_prompt(prepared_data: Dict[str, Any]) -> str:
         """Build comprehensive analysis prompt from prepared data."""
         return f"""
-    You are an expert web auditor analyzing page performance across UX, Performance, and SEO.
+    You are an expert web auditor analyzing page performance across usability, Performance, and SEO.
     Format your response ONLY as valid JSON matching the specified schema.
 
     Analyze this page data:
 
     URL: {prepared_data['url']}
-    Scan Date: {prepared_data['scan_date']}
 
     CONTENT METRICS:
     - Word Count: {prepared_data['word_count']}
@@ -241,20 +289,17 @@ class PageAnalyzerService:
     KEYWORD ANALYSIS:
     {prepared_data['keyword_analysis']}
 
-    For each section (UX, Performance, SEO), provide:
-    1. A score (0-100)
-    2. A title (e.g., "Usability", "Performance", "SEO")
-    3. An impact_message explaining business consequences (2-3 sentences)
-    4. An impact_score (0-100) for that specific metric
-    5. business_benefits: 3-4 bullet points of what fixing issues would do
-    6. problems: specific issues found with:
-    - icon: "warning" or "alert"
-    - title: problem name
-    - description: specific issue details
+    For each section (usability, performance, SEO), provide:
+    1. <section>_score: a number from 0-100
+    2. <section>_issues: list of specific issues with:
+        - title: short problem name
+        - description: short, one-line sentence describing the issue
+        - severity: low, medium, or high
+        - score_impact: Positive Integer between 0-100 quantifying how this issue affects the total score
+        - business_impact: short, one-line sentence explaining the impact
+        - recommendation: short, one-line sentence with recommended action
 
-    Use the accessibility_issues, text_content metrics, and SEO metadata to inform UX and SEO scores.
-    Make scores realistic and actionable. Include real problems found.
-    Calculate overall_score as average of three section scores.
+    Use the accessibility_issues, text_content metrics, and SEO metadata to inform usability and SEO scores. Make scores realistic and actionable. Include real problems found. Ensure all text fields are concise and on a single line.
     """
 
     @staticmethod
@@ -268,33 +313,23 @@ class PageAnalyzerService:
                 base_url="https://openrouter.ai/api/v1",
                 api_key=settings.OPENROUTER_API_KEY
             )
-            
+
             # Add JSON schema instruction to the prompt
             schema_prompt = f"""{prompt}
 
 You MUST respond with ONLY valid JSON matching this exact structure:
 {{
   "url": "string",
-  "overall_score": number (0-100),
   "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
-  "ux_score": number (0-100),
-  "ux_title": "string",
-  "ux_impact_message": "string",
-  "ux_impact_score": number (0-100),
-  "ux_business_benefits": ["string", ...],
-  "ux_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...],
+  
+  "usability_score": number (0-100),
+  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
+  
   "performance_score": number (0-100),
-  "performance_title": "string",
-  "performance_impact_message": "string",
-  "performance_impact_score": number (0-100),
-  "performance_business_benefits": ["string", ...],
-  "performance_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...],
+  "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
+
   "seo_score": number (0-100),
-  "seo_title": "string",
-  "seo_impact_message": "string",
-  "seo_impact_score": number (0-100),
-  "seo_business_benefits": ["string", ...],
-  "seo_problems": [{{"icon": "warning|alert", "title": "string", "description": "string"}}, ...]
+  "seo_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
 }}
 
 Do not include any text before or after the JSON. Only output valid JSON."""
@@ -317,27 +352,30 @@ Do not include any text before or after the JSON. Only output valid JSON."""
                 ],
                 temperature=0.7
             )
-            
+
             response_text = completion.choices[0].message.content or ""
             print(f"OpenRouter Response: {response_text}")
-            
+
             # Try to parse JSON - handle malformed responses
             try:
                 result_data = json.loads(response_text)
             except json.JSONDecodeError as json_err:
                 logger.error(f"JSON parse error: {json_err}")
+                cleaned_text = response_text.strip()
                 # Try to extract valid JSON by cleaning the response
                 cleaned_text = response_text.strip()
                 # Remove markdown code blocks if present
                 if cleaned_text.startswith('```'):
-                    cleaned_text = cleaned_text.split('\n', 1)[1] if '\n' in cleaned_text else cleaned_text
+                    cleaned_text = cleaned_text.split(
+                        '\n', 1)[1] if '\n' in cleaned_text else cleaned_text
                     if cleaned_text.endswith('```'):
-                        cleaned_text = cleaned_text.rsplit('\n', 1)[0] if '\n' in cleaned_text else cleaned_text
-                    cleaned_text = cleaned_text.replace('```json', '').replace('```', '').strip()
-                
+                        cleaned_text = cleaned_text.rsplit(
+                            '\n', 1)[0] if '\n' in cleaned_text else cleaned_text
+                    cleaned_text = cleaned_text.replace(
+                        '```json', '').replace('```', '').strip()
+
                 # If it starts with { and ends with }, try to find the last valid }
                 if cleaned_text.startswith('{'):
-                    # Find the last occurrence of } and truncate there
                     last_brace = cleaned_text.rfind('}')
                     if last_brace > 0:
                         cleaned_text = cleaned_text[:last_brace + 1]
@@ -346,15 +384,7 @@ Do not include any text before or after the JSON. Only output valid JSON."""
                         raise
                 else:
                     raise
-            
-            # Pre-process: ensure all Problem objects have description field
-            for field_name in ['ux_problems', 'performance_problems', 'seo_problems']:
-                if field_name in result_data and isinstance(result_data[field_name], list):
-                    for problem in result_data[field_name]:
-                        if isinstance(problem, dict) and 'description' not in problem:
-                            # Use title as fallback description if missing
-                            problem['description'] = problem.get('title', '')
-            
+
             result = PageAnalysisResult(**result_data)
 
             logger.info(f"OpenRouter API analysis completed for {result.url}")
@@ -363,41 +393,44 @@ Do not include any text before or after the JSON. Only output valid JSON."""
         except Exception as e:
             logger.error(f"OpenRouter API call failed: {str(e)}")
             raise
-    
+
     @staticmethod
-    def _clean_up_llm_response(raw: dict) -> dict:
+    def flatten_issues(result: dict) -> list:
         """
-        Convert flattened LLM output into the structured PageAnalysisResult format.
-
-        {
-            url: str,
-            overall_score: int,
-            scan_date: str,
-            ux: AnalysisSection,
-            performance: AnalysisSection,
-            seo: AnalysisSection
-        }
+        Convert usability/performance/seo issues from a raw dict
+        into a unified list of IssueUnified-compatible dicts.
         """
 
-        def build_section(prefix: str):
-            return {
-                "score": raw[f"{prefix}_score"],
-                "title": raw[f"{prefix}_title"],
-                "impact_message": raw[f"{prefix}_impact_message"],
-                "impact_score": raw[f"{prefix}_impact_score"],
-                "business_benefits": raw[f"{prefix}_business_benefits"],
-                "problems": raw[f"{prefix}_problems"],
-            }
-            
-        print(f'raw: {raw}')
+        unified = []
 
-        formatted = {
-            "url": raw["url"],
-            "overall_score": raw.get("overall_score", ''),
-            "scan_date": raw["scan_date"],
-            "ux": build_section("ux"),
-            "performance": build_section("performance"),
-            "seo": build_section("seo"),
+        category_map = {
+            "usability_issues": "usability",
+            "performance_issues": "performance",
+            "seo_issues": "seo",
         }
 
-        return formatted
+        for field_name, category in category_map.items():
+
+            issues = result.get(field_name, [])
+            # Ensure it's a list (LLMs sometimes return dict or None)
+            if not isinstance(issues, list):
+                continue
+
+            for issue in issues:
+                if not isinstance(issue, dict):
+                    continue
+
+                unified.append(
+                    {
+                        "page_url": result.get("url"),
+                        "title": issue.get("title"),
+                        "category": category,
+                        "severity": issue.get("severity"),
+                        "score_impact": issue.get("score_impact"),
+                        "description": issue.get("description"),
+                        "business_impact": issue.get("business_impact"),
+                        "recommendation": issue.get("recommendation")
+                    }
+                )
+
+        return unified
