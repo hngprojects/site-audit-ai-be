@@ -21,6 +21,9 @@ from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
 from app.features.request_form.routes.request_route import router as request_form_router
 
+# Report feature route
+from app.features.reports.routes.reports import router as reports_router
+
 api_router = APIRouter()
 
 from app.features.support.routes.email_support import router as support_router
@@ -63,3 +66,5 @@ api_router.include_router(notifications_router)
 api_router.include_router(admin_router)
 api_router.include_router(websocket_notifications_router)
 
+# Register report feature routes
+api_router.include_router(reports_router)
