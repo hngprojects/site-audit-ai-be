@@ -1,4 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+import asyncio
+import redis
+import json
+import hashlib
+from urllib.parse import urlparse
+from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -15,7 +21,8 @@ from app.features.scan.schemas.scan import (
     ScanResultsResponse,
     ScanHistoryItem
 )
-from app.features.auth.routes.auth import get_current_user
+from app.features.scan.workers.tasks import run_single_page_scan_sse
+from app.features.auth.routes.auth import get_current_user, decode_access_token
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.features.scan.models.scan_issue import ScanIssue
@@ -26,6 +33,7 @@ from app.features.scan.services.analysis.page_analyzer import PageAnalyzerServic
 from app.features.scan.services.orchestration.history import get_user_scan_history
 from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
+from app.platform.config import settings
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
@@ -34,6 +42,144 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
+@router.post("/start-scan-sse")
+async def start_scan_sse(
+    url: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    device_id: Optional[str] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+):
+    try:
+        url_str = str(url)
+        parsed = urlparse(url_str)
+        
+        user_id = None
+        if credentials:
+            try:
+                payload = decode_access_token(credentials.credentials)
+                user_id = payload.get("sub")
+            except Exception:
+                pass 
+        
+        if not user_id and not device_id:
+            device_id = f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        
+        if user_id:
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
+        
+        result = await db.execute(site_query)
+        site = result.scalar_one_or_none()
+        
+        if not site:
+            site = Site(
+                user_id=user_id,
+                device_id=device_id,
+                root_url=url_str,
+                total_scans=0
+            )
+            db.add(site)
+            await db.flush()
+        
+        scan_job = ScanJob(
+            user_id=user_id,
+            device_id=device_id,
+            site_id=site.id,
+            status=ScanJobStatus.queued,
+            queued_at=datetime.utcnow()
+        )
+        db.add(scan_job)
+        await db.flush()
+        await db.commit()
+        await db.refresh(scan_job)
+        
+        job_id = scan_job.id
+        
+        logger.info(f"[SSE] Created scan job {job_id} for {url_str} (user_id={user_id}, device_id={device_id})")
+
+        run_single_page_scan_sse.delay(job_id, url_str)
+
+        async def event_generator():
+            """Generate SSE events from Redis pub/sub channel"""
+            r = redis.from_url(settings.CELERY_RESULT_BACKEND)
+            pubsub = r.pubsub()
+            channel = f"scan_progress:{job_id}"
+            
+            try:
+                pubsub.subscribe(channel)
+                
+                yield {
+                    "event": "scan_started",
+                    "data": json.dumps({
+                        "job_id": job_id,
+                        "url": url_str,
+                        "progress": 0,
+                        "message": "Scan started. Analyzing page...",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                }
+                
+                for message in pubsub.listen():
+                    if await request.is_disconnected():
+                        logger.info(f"[SSE] Client disconnected from job {job_id}")
+                        break
+                    
+                    if message['type'] == 'message':
+                        try:
+                            event_data = json.loads(message['data'])
+                            event_type = event_data.get("event_type", "update")
+                            
+                            yield {
+                                "event": event_type,
+                                "data": json.dumps(event_data)
+                            }
+                            
+                            logger.info(f"[SSE] Sent {event_type} event to job {job_id}")
+                            
+                            if event_type in ["scan_complete", "scan_error"]:
+                                logger.info(f"[SSE] Closing connection for job {job_id} ({event_type})")
+                                break
+                                
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[SSE] Failed to parse event for job {job_id}: {e}")
+                            continue
+
+                    await asyncio.sleep(0.1)
+                    
+            except Exception as e:
+                logger.error(f"[SSE] Error in event stream for job {job_id}: {e}", exc_info=True)
+                yield {
+                    "event": "scan_error",
+                    "data": json.dumps({
+                        "job_id": job_id,
+                        "progress": 0,
+                        "message": f"Stream error: {str(e)}",
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                }
+            finally:
+                pubsub.unsubscribe(channel)
+                pubsub.close()
+                logger.info(f"[SSE] Cleaned up connection for job {job_id}")
+        
+        return EventSourceResponse(event_generator())
+        
+    except Exception as e:
+        logger.error(f"[SSE] Failed to start scan: {e}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start scan: {str(e)}"
+        )
 
 @router.post("/start", response_model=ScanStartResponse)
 async def start_scan(
