@@ -6,6 +6,7 @@ from celery import shared_task, chain, group, chord
 from celery.exceptions import Retry
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.platform.celery_app import celery_app
+from app.platform.services.sse_helper import publish_scan_progress, publish_scan_error, publish_scan_completion
 from app.features.auth.models.user import User 
 from app.features.sites.models.site import Site
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
@@ -247,6 +248,14 @@ def discover_pages(
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.discovering,
                       started_at=datetime.utcnow())
+    
+    # Publish SSE event
+    publish_scan_progress(
+        job_id=job_id,
+        status="discovering",
+        progress=10,
+        message="Starting page discovery"
+    )
 
     try:
         discovery_service = PageDiscoveryService()
@@ -257,6 +266,15 @@ def discover_pages(
 
         update_job_status(job_id, ScanJobStatus.discovering,
                           pages_discovered=len(pages))
+        
+        # Publish SSE event
+        publish_scan_progress(
+            job_id=job_id,
+            status="discovering",
+            progress=25,
+            message=f"Found {len(pages)} pages",
+            pages_discovered=len(pages)
+        )
 
         logger.info(f"[{job_id}] Discovered {len(pages)} pages")
         return {
@@ -269,6 +287,7 @@ def discover_pages(
     except Exception as e:
         logger.error(f"[{job_id}] Discovery failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
+        publish_scan_error(job_id, str(e))
         raise
 
 
@@ -419,6 +438,15 @@ def select_pages(
         f"[{job_id}] Selecting important pages from {len(pages)} discovered")
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.selecting)
+    
+    # Publish SSE event
+    publish_scan_progress(
+        job_id=job_id,
+        status="selecting",
+        progress=30,
+        message=f"Selecting important pages from {len(pages)} discovered",
+        pages_discovered=len(pages)
+    )
 
     try:
         selector = PageSelectorService()
@@ -432,7 +460,17 @@ def select_pages(
         _mark_selected_pages(job_id, selected)
 
         update_job_status(job_id, ScanJobStatus.selecting,
-                          pages_selected=len(selected))              
+                          pages_selected=len(selected))
+        
+        # Publish SSE event
+        publish_scan_progress(
+            job_id=job_id,
+            status="selecting",
+            progress=35,
+            message=f"Selected {len(selected)} pages for analysis",
+            pages_selected=len(selected),
+            total_discovered=len(pages)
+        )
 
         logger.info(f"[{job_id}] Selected {len(selected)} pages for analysis")
         return {
@@ -444,6 +482,7 @@ def select_pages(
     except Exception as e:
         logger.error(f"[{job_id}] Selection failed: {e}")
         update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
+        publish_scan_error(job_id, str(e))
         raise
 
 
@@ -707,6 +746,14 @@ def analyze_page(
 
     # Update status to analyzing when first analysis task starts
     update_job_status(job_id, ScanJobStatus.analyzing)
+    
+    # Publish SSE event
+    publish_scan_progress(
+        job_id=job_id,
+        status="analyzing",
+        progress=60,
+        message=f"Analyzing page: {page_url}"
+    )
 
     logger.info(f"[{job_id}] Analyzing page: {page_url}")
 
@@ -1063,6 +1110,14 @@ def aggregate_results(
     
     logger.info(
         f"[{job_id}] Aggregating results from {len(analysis_results)} pages")
+    
+    # Publish SSE event
+    publish_scan_progress(
+        job_id=job_id,
+        status="aggregating",
+        progress=90,
+        message=f"Calculating final scores from {len(analysis_results)} pages"
+    )
 
     try:
         if not analysis_results:
@@ -1127,6 +1182,13 @@ def _update_job_final_scores(job_id: str, scores: Dict):
             db.commit()
             
             logger.info(f"Job {job_id} marked as completed with score {scores.get('score_overall')}")
+            
+            # Publish SSE completion event
+            publish_scan_completion(
+                job_id=job_id,
+                final_score=scores.get('score_overall', 0),
+                total_issues=scores.get('total_issues', 0)
+            )
             
             # Trigger scan complete notification
             send_scan_notification(
@@ -1220,6 +1282,15 @@ def process_selected_pages(
 
     from app.features.scan.models.scan_job import ScanJobStatus
     update_job_status(job_id, ScanJobStatus.scraping)
+    
+    # Publish SSE event
+    publish_scan_progress(
+        job_id=job_id,
+        status="scraping",
+        progress=40,
+        message=f"Scraping {len(selected_pages)} selected pages",
+        pages_selected=len(selected_pages)
+    )
 
     # Get page IDs from database for tracking
     page_id_map = _get_page_ids_for_urls(job_id, selected_pages)
