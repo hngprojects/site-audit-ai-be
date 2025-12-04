@@ -10,6 +10,7 @@ from app.features.auth.models.user import User
 from app.features.sites.models.site import Site
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.services.analysis.scan_result_processor import ScanResultProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,10 @@ def get_sync_db():
         from sqlalchemy.orm import sessionmaker
         from app.platform.config import settings
 
-        # Convert async URL to sync if needed
         db_url = settings.DATABASE_URL
         if db_url.startswith("postgresql+asyncpg://"):
             db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
 
-        # Create engine with connection pooling
         _sync_engine = create_engine(
             db_url,
             pool_size=25,
