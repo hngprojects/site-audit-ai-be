@@ -29,7 +29,8 @@ from app.platform.response import api_response
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
-
+from app.features.scan.services.scan.scan import delete_scan_job
+from app.features.scan.schemas.scan import DeleteScanResponse
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -645,3 +646,54 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
+
+@router.delete(
+    "/{job_id}",  # <-- CONVENTION FIX: Renamed path parameter
+    response_model=DeleteScanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete an individual scan job", # <-- Documentation update
+    description="""
+    Task 3: Delete a specific scan job record.
+    
+    This endpoint:
+    1. Verifies the scan job belongs to the authenticated user
+    2. Deletes the scan job and its related records (pages, issues) efficiently
+    
+    Path Parameters:
+    - job_id: The unique identifier of the scan job to delete # <-- Documentation update
+    
+    Returns:
+    - 200: Scan deleted successfully
+    - 404: Scan not found or doesn't belong to the user
+    - 500: Server error during deletion
+    
+    Authentication required: Yes (Bearer token)
+    """
+)
+async def delete_scan(
+    job_id: str, # <-- CONVENTION FIX: Renamed function parameter
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete an individual scan record.
+    """
+    try:
+        # Delete scan through service layer
+        result = await delete_scan_job(
+            db=db,
+            job_id=job_id, # <-- CONVENTION FIX: Passed job_id as scan_id to service
+            user_id=current_user.id
+        )
+        
+        return api_response(
+            data=result,
+            message="Scan deleted successfully",
+            status_code=status.HTTP_200_OK
+        )
+        
+    except Exception as e:
+        # Service layer already handles HTTPExceptions
+        # This catches any unexpected errors
+        logger.error(f"Error in delete_scan endpoint: {e}")
+        raise
