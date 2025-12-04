@@ -689,7 +689,7 @@ async def delete_scan(
         )
         
         return api_response(
-            data=result,
+            data=[],
             message="Scan deleted successfully",
             status_code=status.HTTP_200_OK
         )
