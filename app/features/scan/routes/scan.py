@@ -29,7 +29,8 @@ from app.platform.response import api_response
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
-
+from app.features.scan.services.scan.scan import delete_scan_job
+from app.features.scan.schemas.scan import DeleteScanResponse
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -645,3 +646,51 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
+
+@router.delete(
+    "/{job_id}",
+    response_model=DeleteScanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete an individual scan",
+    description="""
+    
+    This endpoint:
+    1. Verifies the scan belongs to the authenticated user
+    2. Deletes the scan and its related records (pages, issues) efficiently
+    
+    Path Parameters:
+    - job_id: The unique identifier of the scan to delete
+    
+    Returns:
+    - 200: Scan deleted successfully
+    - 404: Scan not found or doesn't belong to the user
+    - 500: Server error during deletion
+    
+    Authentication required: Yes (Bearer token)
+    """
+)
+async def delete_scan(
+    job_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete an individual scan record.
+    """
+    try:
+       
+        result = await delete_scan_job(
+            db=db,
+            job_id=job_id,
+            user_id=current_user.id
+        )
+        
+        return api_response(
+            data=result,
+            message="Scan deleted successfully",
+            status_code=status.HTTP_200_OK
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in delete_scan endpoint: {e}")
+        raise

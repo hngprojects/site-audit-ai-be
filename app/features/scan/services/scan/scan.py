@@ -7,6 +7,11 @@ from sqlalchemy import select, update
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.celery_app import celery_app
+from typing import Dict, Any
+from sqlalchemy import delete
+from fastapi import HTTPException, status
+from app.features.scan.models.scan_job import ScanJob
+
 
 logger = logging.getLogger(__name__)
 
@@ -49,3 +54,50 @@ async def stop_scan_job(job_id: str, db: AsyncSession):
             logger.error(f"Error revoking Celery task {job.celery_task_id}: {e}")
     
     return True
+
+async def delete_scan_job(
+    db: AsyncSession,
+    job_id: str,
+    user_id: str
+) -> dict[str, Any]:
+    """
+    Task 3: Delete an individual scan record.
+    
+    Uses the efficient SQL DELETE approach to ensure the scan belongs to the user
+    and is deleted in a single query.
+    """
+    try:
+        # Efficiently delete the scan using a single SQL DELETE statement
+        stmt = delete(ScanJob).where(
+            ScanJob.id == job_id,
+            ScanJob.user_id == user_id
+        )
+        
+        result = await db.execute(stmt)
+        await db.commit()
+        
+        # Check if any row was affected (i.e., if the scan existed and belonged to the user)
+        if result.rowcount == 0:
+            logger.warning(f"Delete requested for scan {job_id} not found or doesn't belong to user {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Scan not found or not owned by user"
+            )
+        
+        logger.info(f"Successfully deleted scan {job_id} for user {user_id}")
+        
+        return {
+            "message": "Scan deleted successfully.",
+            "job_id": job_id
+        }
+        
+    except HTTPException:
+        
+        raise
+    except Exception as e:
+        # Log unexpected errors
+        logger.error(f"Error deleting scan {job_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting scan: {str(e)}"
+        )

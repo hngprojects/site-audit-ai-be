@@ -265,3 +265,16 @@ class TogglePageSelectionResponse(BaseModel):
     page_url: str
     is_selected: bool
     message: str
+
+class DeleteScanResponse(BaseModel):
+    """Response after deleting a scan."""
+    message: str
+    scan_id: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Scan deleted successfully.",
+                "scan_id": "550e8400-e29b-41d4-a716-446655440000"
+            }
+        }
