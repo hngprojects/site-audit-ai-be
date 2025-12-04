@@ -13,21 +13,37 @@ from app.features.scan.models.scan_page import ScanPage
 
 logger = logging.getLogger(__name__)
 
+# Create a single shared sync engine for all Celery tasks
+_sync_engine = None
+_sync_session_factory = None
+
 
 def get_sync_db():
     """Get a database session for Celery tasks."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.platform.config import settings
+    global _sync_engine, _sync_session_factory
+    
+    if _sync_engine is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from app.platform.config import settings
 
-    # Convert async URL to sync if needed
-    db_url = settings.DATABASE_URL
-    if db_url.startswith("postgresql+asyncpg://"):
-        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        # Convert async URL to sync if needed
+        db_url = settings.DATABASE_URL
+        if db_url.startswith("postgresql+asyncpg://"):
+            db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
 
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    return SessionLocal()
+        # Create engine with connection pooling
+        _sync_engine = create_engine(
+            db_url,
+            pool_size=25,
+            max_overflow=25, 
+            pool_timeout=30, 
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+        _sync_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
+    
+    return _sync_session_factory()
 
 
 def verify_db_update(
