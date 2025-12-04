@@ -14,8 +14,8 @@ class PageAnalysisResult(BaseModel):
     url: str
     scan_date: str
 
-    usability_score: int
-    usability_issues: List[Issue]
+    accessibility_score: int
+    accessibility_issues: List[Issue]
 
     performance_score: int
     performance_issues: List[Issue]

@@ -167,7 +167,7 @@ class PageAnalyzerService:
         seo_issues = prepared_data['seo_issues']
 
         score_map = {
-            "usability": [
+            "accessibility": [
                 {"value": len(acc_issues['images_missing_alt']), "weight": 0.4, "total": max(
                     prepared_data['images_count'], 1)},
                 {"value": len(acc_issues['inputs_missing_label']), "weight": 0.15, "total": max(
@@ -202,7 +202,7 @@ class PageAnalyzerService:
         formula_scores = {}
 
         for section, rules in score_map.items():
-            if section == "usability":
+            if section == "accessibility":
                 weighted_pct = sum(
                     rule['weight'] * (rule['value'] / rule['total']) for rule in rules)
                 score = max(0, 100 * (1 - weighted_pct))
@@ -230,7 +230,7 @@ class PageAnalyzerService:
         formula_scores = PageAnalyzerService._calculate_formula_scores(
             prepared_data)
 
-        for section in ["usability", "performance", "seo"]:
+        for section in ["accessibility", "performance", "seo"]:
             llm_score = merged_response[section + "_score"]
             formula_score = formula_scores[f"{section}_score_formula"]
 
@@ -238,7 +238,7 @@ class PageAnalyzerService:
                 (llm_score + formula_score) / 2)
 
         merged_response["overall_score"] = round(
-            (merged_response["usability_score"] + merged_response["seo_score"] + merged_response["performance_score"]) / 3)
+            (merged_response["accessibility_score"] + merged_response["seo_score"] + merged_response["performance_score"]) / 3)
 
         return merged_response
 
@@ -246,7 +246,7 @@ class PageAnalyzerService:
     def _build_analysis_prompt(prepared_data: Dict[str, Any]) -> str:
         """Build comprehensive analysis prompt from prepared data."""
         return f"""
-    You are an expert web auditor analyzing page performance across usability, Performance, and SEO.
+    You are an expert web auditor analyzing page performance across accessibility, Performance, and SEO.
     Format your response ONLY as valid JSON matching the specified schema.
 
     Analyze this page data:
@@ -289,7 +289,7 @@ class PageAnalyzerService:
     KEYWORD ANALYSIS:
     {prepared_data['keyword_analysis']}
 
-    For each section (usability, performance, SEO), provide:
+    For each section (accessibility, performance, SEO), provide:
     1. <section>_score: a number from 0-100
     2. <section>_issues: list of specific issues with:
         - title: short problem name
@@ -299,7 +299,7 @@ class PageAnalyzerService:
         - business_impact: short, one-line sentence explaining the impact
         - recommendation: short, one-line sentence with recommended action
 
-    Use the accessibility_issues, text_content metrics, and SEO metadata to inform usability and SEO scores. Make scores realistic and actionable. Include real problems found. Ensure all text fields are concise and on a single line.
+    Use the accessibility_issues, text_content metrics, and SEO metadata to inform accessibility and SEO scores. Make scores realistic and actionable. Include real problems found. Ensure all text fields are concise and on a single line.
     """
 
     @staticmethod
@@ -322,8 +322,8 @@ You MUST respond with ONLY valid JSON matching this exact structure:
   "url": "string",
   "scan_date": "string (YYYY-MM-DD HH:MM:SS)",
   
-  "usability_score": number (0-100),
-  "usability_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
+  "accessibility_score": number (0-100),
+  "accessibility_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
   
   "performance_score": number (0-100),
   "performance_issues": [{{"title": "string", "severity": "low|medium|high", "score_impact": number (0-100), "description": "string", "business_impact": "string", "recommendation": "string"}}, ...],
@@ -397,14 +397,14 @@ Do not include any text before or after the JSON. Only output valid JSON."""
     @staticmethod
     def flatten_issues(result: dict) -> list:
         """
-        Convert usability/performance/seo issues from a raw dict
+        Convert accessibility/performance/seo issues from a raw dict
         into a unified list of IssueUnified-compatible dicts.
         """
 
         unified = []
 
         category_map = {
-            "usability_issues": "usability",
+            "accessibility_issues": "accessibility",
             "performance_issues": "performance",
             "seo_issues": "seo",
         }
