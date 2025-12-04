@@ -19,6 +19,7 @@ from app.features.scan.routes.selection import router as scan_selection_router
 from app.features.scan.routes.scraping import router as scan_scraping_router
 from app.features.scan.routes.analysis import router as scan_analysis_router
 from app.features.scan.routes.pages import router as scan_pages_router
+from app.features.scan.routes.sse import router as scan_sse_router
 from app.features.request_form.routes.request_route import router as request_form_router
 
 api_router = APIRouter()
@@ -58,6 +59,7 @@ api_router.include_router(scan_selection_router)
 api_router.include_router(scan_scraping_router)
 api_router.include_router(scan_analysis_router)
 api_router.include_router(scan_pages_router)
+api_router.include_router(scan_sse_router)
 api_router.include_router(contact_router)
 api_router.include_router(notifications_router)
 api_router.include_router(admin_router)
