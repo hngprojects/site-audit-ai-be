@@ -4,7 +4,7 @@ Scan Schemas
 Request and response models for the scan API endpoints.
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 
 # ============================================================================
@@ -278,3 +278,25 @@ class DeleteScanResponse(BaseModel):
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
+
+class ScanGroupedItem(BaseModel):
+    """Schema for a single scan job item within a date group."""
+    # Maps the SQLAlchemy model's 'id' field to the Pydantic schema's 'scan_id' field
+    job_id: str= Field(alias="id")
+    status: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+        # Custom logic to map 'id' to 'scan_id' during conversion from SQLAlchemy model
+        @classmethod
+        def from_orm(cls, obj):
+            data = obj.__dict__.copy()
+            data['scan_id'] = data.pop('id')
+            return cls(**data)
+
+# 2. Schema for the date group
+class ScanGroupedByDate(BaseModel):
+    """Schema for a list of scans grouped by date."""
+    date: str = Field(description="The date in ISO format (YYYY-MM-DD).")
+    scans: List[ScanGroupedItem] = Field(description="List of scans created on this date.")

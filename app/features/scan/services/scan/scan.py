@@ -7,10 +7,11 @@ from sqlalchemy import select, update
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.celery_app import celery_app
-from typing import Dict, Any
+from typing import Dict, Any, List
 from sqlalchemy import delete
 from fastapi import HTTPException, status
 from app.features.scan.models.scan_job import ScanJob
+from app.features.scan.schemas.scan import ScanGroupedByDate, ScanGroupedItem
 
 logger = logging.getLogger(__name__)
 
@@ -100,3 +101,58 @@ async def delete_scan_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting scan: {str(e)}"
         )
+
+async def get_scans_grouped_by_date(
+    db: AsyncSession,
+    site_id: str,
+    user_id: str
+) -> List[ScanGroupedByDate]:
+    """
+    Retrieves all scan jobs for a given site and user, grouped by the date they were created.
+    
+    Logic:
+    1. Query all ScanJob records for the given site_id and user_id, ordered by created_at descending.
+    2. Group the results by the date part of the created_at timestamp in Python.
+    3. Convert the grouped data into the required Pydantic schema.
+    """
+    # 1. Query all relevant ScanJob records, ordered by creation date descending
+    stmt = (
+        select(ScanJob)
+        .where(
+            ScanJob.site_id == site_id,
+            ScanJob.user_id == user_id
+        )
+        .order_by(ScanJob.created_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    scan_jobs = result.scalars().all()
+    
+    # 2. Group the results by date in Python
+    grouped_scans = {}
+    for job in scan_jobs:
+        # Extract the date part and format it as a string (e.g., "2025-12-03")
+        # The created_at field is a datetime object, which has a .date() method.
+        date_str = job.created_at.date().isoformat()
+        
+        # Convert the SQLAlchemy model object to the Pydantic schema for the item
+        scan_item = ScanGroupedItem.model_validate(job)
+        
+        if date_str not in grouped_scans:
+            grouped_scans[date_str] = []
+            
+        grouped_scans[date_str].append(scan_item)
+        
+    # 3. Convert the dictionary into the final list of ScanGroupedByDate objects
+    # We maintain the order by date (most recent first) by iterating over the sorted keys
+    final_list = []
+    # Sort keys (dates) in descending order to ensure most recent date is first
+    for date_str in sorted(grouped_scans.keys(), reverse=True):
+        final_list.append(
+            ScanGroupedByDate(
+                date=date_str,
+                scans=grouped_scans[date_str]
+            )
+        )
+        
+    return final_list
