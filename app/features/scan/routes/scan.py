@@ -14,7 +14,6 @@ from app.features.scan.schemas.scan import (
     ScanStatusResponse,
     ScanResultsResponse,
     ScanHistoryItem, 
-    ScanGroupedByDate
 )
 from app.features.auth.routes.auth import get_current_user
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
@@ -30,8 +29,9 @@ from app.platform.response import api_response
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
-from app.features.scan.services.scan.scan import delete_scan_job, get_scans_grouped_by_date
+from app.features.scan.services.scan.scan import delete_scan_job
 from app.features.scan.schemas.scan import DeleteScanResponse
+
 
 logger = get_logger(__name__)
 
@@ -695,53 +695,5 @@ async def delete_scan(
         )
         
     except Exception as e:
-        # Service layer already handles HTTPExceptions
-        # This catches any unexpected errors
         logger.error(f"Error in delete_scan endpoint: {e}")
         raise
-
-@router.get(
-    "/sites/{site_id}/grouped",
-    response_model=List[ScanGroupedByDate],
-    status_code=status.HTTP_200_OK,
-    summary="List Scans for a Website, Grouped by Date",
-    description="Retrieves all scan jobs for a specific site, grouped by the date they were created."
-)
-async def get_scans_grouped(
-    site_id: str,
-    current_user=Depends(get_current_user), # <-- Dependency to get user_id from auth
-    db: AsyncSession = Depends(get_db)
-) -> List[ScanGroupedByDate]:
-    """
-    Endpoint: List Scans for a Website, Grouped by Date
-    
-    Retrieves all scan jobs for a specific site, filtered by the authenticated user,
-    and groups them by the date they were created. The groups are ordered by date,
-    most recent first.
-    
-    Path Parameters:
-    - site_id: The unique identifier of the site.
-    
-    Returns:
-    - A list of objects, each containing a date string and a list of scans from that date.
-    """
-    try:
-        grouped_scans = await get_scans_grouped_by_date(
-            db=db,
-            site_id=site_id,
-            user_id=current_user.id
-        )
-        
-        return api_response(
-            data=grouped_scans,
-            message="Scans grouped by date retrieved successfully",
-            status_code=status.HTTP_200_OK
-        )
-        
-    except Exception as e:
-        logger.error(f"Error fetching grouped scans for site {site_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching grouped scans: {str(e)}"
-        )
-    
