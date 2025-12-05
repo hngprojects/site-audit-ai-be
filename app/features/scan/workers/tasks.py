@@ -10,24 +10,39 @@ from app.features.auth.models.user import User
 from app.features.sites.models.site import Site
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
+from app.features.scan.services.analysis.scan_result_processor import ScanResultProcessor
 
 logger = logging.getLogger(__name__)
+
+# Create a single shared sync engine for all Celery tasks
+_sync_engine = None
+_sync_session_factory = None
 
 
 def get_sync_db():
     """Get a database session for Celery tasks."""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from app.platform.config import settings
+    global _sync_engine, _sync_session_factory
+    
+    if _sync_engine is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from app.platform.config import settings
 
-    # Convert async URL to sync if needed
-    db_url = settings.DATABASE_URL
-    if db_url.startswith("postgresql+asyncpg://"):
-        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+        db_url = settings.DATABASE_URL
+        if db_url.startswith("postgresql+asyncpg://"):
+            db_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
 
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    return SessionLocal()
+        _sync_engine = create_engine(
+            db_url,
+            pool_size=25,
+            max_overflow=25, 
+            pool_timeout=30, 
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+        _sync_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
+    
+    return _sync_session_factory()
 
 
 def verify_db_update(
@@ -196,6 +211,140 @@ def update_job_status(job_id: str, status, **kwargs):
         db.close()
 
 
+@celery_app.task(
+    bind=True,
+    name="app.features.scan.workers.tasks.run_single_page_scan_sse",
+    max_retries=3,
+    default_retry_delay=10
+)
+def run_single_page_scan_sse(self, job_id: str, url: str):
+    from app.features.scan.services.scraping.scraping_service import ScrapingService
+    from app.features.scan.services.analysis.scan_result_processor import ScanResultProcessor
+    from app.features.scan.workers.sse_publisher import publish_sse_event
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    import time
+    
+    logger.info(f"[{job_id}] Starting SSE scan with Selenium performance measurement for {url}")
+    
+    driver = None
+    
+    try:
+        update_job_status(job_id, ScanJobStatus.scraping, started_at=datetime.utcnow())
+        
+        publish_sse_event(job_id, "scan_started", {
+            "progress": 0,
+            "message": "Scan started..."
+        })
+        
+        publish_sse_event(job_id, "loading_page", {
+            "progress": 20,
+            "message": "Opening your webpage..."
+        })
+        
+        logger.info(f"[{job_id}] Loading page with Selenium...")
+        start_time = time.time()
+        
+        try:
+            driver = ScrapingService.load_page(url, timeout=15)
+            load_time_ms = int((time.time() - start_time) * 1000)
+            logger.info(f"[{job_id}] Page loaded in {load_time_ms}ms")
+            
+        except TimeoutException:
+            load_time_ms = 15000
+            logger.warning(f"[{job_id}] Page load timeout after {load_time_ms}ms")
+            
+        except WebDriverException as e:
+            error_msg = f"Selenium error: {str(e)}"
+            logger.error(f"[{job_id}] {error_msg}")
+            update_job_status(job_id, ScanJobStatus.failed, error_message=error_msg)
+            publish_sse_event(job_id, "scan_error", {
+                "progress": 0,
+                "message": error_msg,
+                "error": str(e)
+            })
+            return
+        
+        if load_time_ms < 1000:
+            performance_score = 100
+            performance_message = f"Excellent! Your Page Loaded Super Fast. Page loaded in {load_time_ms}ms"
+        elif load_time_ms < 2000:
+            performance_score = 90
+            performance_message = f"Great! Your Page Loads Fast. Loaded in {load_time_ms}ms"
+        elif load_time_ms < 3000:
+            performance_score = 75
+            performance_message = f"Good. Your Page loaded in {load_time_ms}ms"
+        elif load_time_ms < 5000:
+            performance_score = 60
+            performance_message = f"Average. Page loaded in {load_time_ms}ms - could be faster"
+        elif load_time_ms < 8000:
+            performance_score = 40
+            performance_message = f"Slow. Page loaded in {load_time_ms}ms - needs optimization"
+        else:
+            performance_score = 20
+            performance_message = f"Very slow. Page loaded in {load_time_ms}ms - needs immediate attention"
+        
+        publish_sse_event(job_id, "performance_check", {
+            "progress": 40,
+            "load_time_ms": load_time_ms,
+            "score": performance_score,
+            "message": performance_message
+        })
+        
+        logger.info(f"[{job_id}] Extracting content from page...")
+        html_content = driver.page_source
+        page_title = driver.title or None
+        current_url = driver.current_url
+        
+        driver.quit()
+        driver = None
+        
+        if not html_content:
+            error_msg = "Failed to extract HTML content from page"
+            logger.error(f"[{job_id}] {error_msg}")
+            update_job_status(job_id, ScanJobStatus.failed, error_message=error_msg)
+            publish_sse_event(job_id, "scan_error", {
+                "progress": 0,
+                "message": error_msg,
+                "error": error_msg
+            })
+            return
+        
+        publish_sse_event(job_id, "extracting_content", {
+            "progress": 50,
+            "message": "Extracting content for analysis..."
+        })
+        
+        logger.info(f"[{job_id}] Starting LLM analysis pipeline...")
+        db = get_sync_db()
+        try:
+            result = ScanResultProcessor.process_page_scan(
+                db=db,
+                job_id=job_id,
+                url=current_url,
+                html_content=html_content,
+                load_time_ms=load_time_ms,
+                page_title=page_title
+            )
+            logger.info(f"[{job_id}] SSE scan completed successfully: Overall score {result['overall_score']}/100")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"[{job_id}] SSE scan failed: {e}", exc_info=True)
+        
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+        
+        update_job_status(job_id, ScanJobStatus.failed, error_message=str(e))
+        publish_sse_event(job_id, "scan_error", {
+            "progress": 0,
+            "message": f"Scan failed: {str(e)}",
+            "error": str(e)
+        })
 
 # Phase 1: Discovery
 
