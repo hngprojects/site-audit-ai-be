@@ -535,7 +535,7 @@ async def list_user_scans(
             {
                 "site_id": site.site_id,
                 "site_url": site.site_url,
-                "last_scan_date": site.last_scan_date.isoformat() + "Z" if site.last_scan_date else None
+                "last_scan_date": site.last_scan_date.isoformat() if site.last_scan_date else None
             }
             for site in sites
         ]
@@ -543,9 +543,10 @@ async def list_user_scans(
         return api_response(data=data)
 
     except Exception as e:
+        logger.info(f'Error fetching user websites: {str(e)}')
         return api_response(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message=f"Error fetching user websites: {str(e)}",
+            message="Error fetching user websites",
             data={}
         )
 
