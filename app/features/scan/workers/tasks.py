@@ -847,9 +847,17 @@ def analyze_page(
         # Pass extracted_data which has the format: {status_code, status, message, data}
         analysis_result = PageAnalyzerService.analyze_page(extracted_data)
 
+        # Convert Pydantic model to dict for storage and downstream processing
+        if hasattr(analysis_result, 'model_dump'):
+            detailed_analysis_dict = analysis_result.model_dump()
+        elif hasattr(analysis_result, 'dict'):
+            detailed_analysis_dict = analysis_result.dict()
+        else:
+            detailed_analysis_dict = analysis_result
+
         analysis = _transform_analysis_result(analysis_result)
 
-        _update_page_analysis(page_id, analysis, analysis_result)
+        _update_page_analysis(page_id, analysis, detailed_analysis_dict)
 
         logger.info(
             f"[{job_id}] Analysis complete for {page_url}: {analysis['overall_score']}/100"
@@ -860,7 +868,7 @@ def analyze_page(
             "page_id": page_id,
             "page_url": page_url,
             "analysis": analysis,
-            "detailed_analysis": analysis_result
+            "detailed_analysis": detailed_analysis_dict
         }
     except Exception as e:
         logger.error(
@@ -872,22 +880,56 @@ def analyze_page(
 
 def _transform_analysis_result(analysis_result) -> Dict[str, Any]:
     """
-    Transform PageAnalysisResult dict to database-friendly format.
+    Transform PageAnalysisResult to database-friendly format.
     Maps LLM output (accessibility/Performance/SEO) to database fields (Accessibility/Design/Performance/SEO).
 
     Args:
-        analysis_result: Dict from PageAnalyzerService with nested structure:
+        analysis_result: PageAnalysisResult Pydantic model or dict from PageAnalyzerService with nested structure:
             {overall_score, accessibility: {score, ...}, performance: {score, ...}, seo: {score, ...}}
 
     Returns:
         Dict with flat structure for database storage
     """
+    # Handle both Pydantic models and dicts for backwards compatibility
+    if hasattr(analysis_result, 'model_dump'):
+        # Pydantic v2
+        data = analysis_result.model_dump()
+    elif hasattr(analysis_result, 'dict'):
+        # Pydantic v1
+        data = analysis_result.dict()
+    elif isinstance(analysis_result, dict):
+        data = analysis_result
+    else:
+        # Fallback: try to access as attributes
+        overall = (
+            data.get("accessibility_score", 0) + 
+            data.get("performance_score", 0) + 
+            data.get("seo_score", 0)
+        ) // 3 if isinstance(analysis_result, dict) else (
+            getattr(analysis_result, 'accessibility_score', 0) +
+            getattr(analysis_result, 'performance_score', 0) +
+            getattr(analysis_result, 'seo_score', 0)
+        ) // 3
+        
+        return {
+            "overall_score": overall,
+            "score_accessibility": getattr(analysis_result, 'accessibility_score', 0),
+            "score_performance": getattr(analysis_result, 'performance_score', 0),
+            "score_seo": getattr(analysis_result, 'seo_score', 0),
+        }
+    
+    # Calculate overall score as average of the three scores
+    overall = (
+        data.get("accessibility_score", 0) + 
+        data.get("performance_score", 0) + 
+        data.get("seo_score", 0)
+    ) // 3
 
     return {
-        "overall_score": analysis_result.get("overall_score"),
-        "score_accessibility": analysis_result.get("accessibility_score"),
-        "score_performance": analysis_result.get("performance_score"),
-        "score_seo": analysis_result.get("seo_score"),
+        "overall_score": overall,
+        "score_accessibility": data.get("accessibility_score"),
+        "score_performance": data.get("performance_score"),
+        "score_seo": data.get("seo_score"),
     }
 
 
