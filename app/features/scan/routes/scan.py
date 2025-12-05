@@ -37,6 +37,8 @@ from app.platform.config import settings
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
+from app.platform.utils.url_validator import validate_url
+
 
 logger = get_logger(__name__)
 
@@ -51,7 +53,15 @@ async def start_scan_sse(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ):
     try:
-        url_str = str(url)
+
+        is_valid, url_str, error_message = validate_url(url)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid URL: {error_message}"
+            )
+        
         parsed = urlparse(url_str)
         
         user_id = None
