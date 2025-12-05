@@ -86,27 +86,56 @@ class TestPageDiscoveryService:
 class TestDiscoverUrlsEndpoint:
     """Integration tests for the discover-urls endpoint"""
     
-    def test_discover_urls_requires_authentication(self, client):
-        """Test that endpoint requires authentication"""
+    @patch('app.features.scan.routes.discovery.PageDiscoveryService')
+    def test_discover_urls_works_without_authentication(self, mock_service_class, client):
+        """Test that endpoint works without authentication (optional auth)"""
+        # Create mock instance
+        mock_service_instance = MagicMock()
+        mock_service_class.return_value = mock_service_instance
+        
+        # Mock page discovery - return some URLs
+        mock_service_instance.discover_pages.return_value = [
+            "https://example.com",
+            "https://example.com/about",
+            "https://example.com/contact"
+        ]
+        
+        # Mock LLM ranking (static method)
+        mock_service_class.rank_and_annotate_pages.return_value = [
+            {
+                "title": "Home",
+                "url": "https://example.com",
+                "priority": "High Priority",
+                "description": "Main landing page"
+            },
+            {
+                "title": "About",
+                "url": "https://example.com/about",
+                "priority": "Medium Priority",
+                "description": "About page"
+            }
+        ]
+        
         response = client.post(
             "/api/v1/scan/discovery/discover-urls",
             json={"url": "https://example.com"}
         )
         
-        # Should return 403 without auth token
-        assert response.status_code == 403
+        # Should return 200 without auth token (auth is optional)
+        assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "error"
-        assert "authenticated" in data["message"].lower()
+        assert data["status"] == "success"
+        assert "important_urls" in data["data"]
+        assert len(data["data"]["important_urls"]) > 0
+        mock_service_instance.discover_pages.assert_called_once_with(url="https://example.com", max_pages=15)
+        mock_service_class.rank_and_annotate_pages.assert_called_once()
     
     def test_discover_urls_validates_url_format(self, client):
         """Test that endpoint validates URL format"""
-        # Create a mock token (won't validate but will pass the dependency check)
         response = client.post(
             "/api/v1/scan/discovery/discover-urls",
-            json={"url": "not-a-valid-url"},
-            headers={"Authorization": "Bearer fake-token-for-test"}
+            json={"url": "not-a-valid-url"}
         )
         
         # Should return 400 or 422 for invalid URL format
-        assert response.status_code in [400, 422, 401]
+        assert response.status_code in [400, 422]
