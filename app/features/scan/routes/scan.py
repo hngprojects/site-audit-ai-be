@@ -45,16 +45,16 @@ async def start_scan(
 ):
     """
     Start a complete website scan (SYNCHRONOUS - for testing).
-
+    
     This endpoint runs the full scan synchronously:
-    1. Discovers pages using Selenium
-    2. Selects important pages using LLM
+    1. Discovers pages using LLM (up to 10 important pages)
+    2. Selects important pages using LLM (top_n from discovered pages)
     3. Returns results immediately
-
+    
     Use /start-async for production async workflow.
-
+    
     Supports both authenticated and anonymous users.
-
+    
     Returns:
         ScanStartResponse with job_id and results summary
     """
@@ -118,10 +118,10 @@ async def start_scan(
         db.add(scan_job)
         await db.flush()
 
-        discovery_service = PageDiscoveryService()
-        discovered_pages = discovery_service.discover_pages(
+        # Discover up to 10 pages, then selection will pick top_n from those
+        discovered_pages = PageDiscoveryService.discover_pages(
             url=url_str,
-            max_pages=1
+            max_pages=10
         )
 
         scan_job.pages_discovered = len(discovered_pages)
