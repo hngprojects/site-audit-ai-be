@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from typing import Dict, Any
 from copy import deepcopy
@@ -69,7 +70,8 @@ class PageAnalyzerService:
 
             logger.info(
                 f"Page analysis complete: {result.get('overall_score')}/100 for {result.get('url')}")
-            return result
+
+            return PageAnalysisResult(**result)
 
         except ValueError as e:
             logger.error(f"Validation error: {str(e)}")
@@ -356,14 +358,11 @@ Do not include any text before or after the JSON. Only output valid JSON."""
             response_text = completion.choices[0].message.content or ""
             print(f"OpenRouter Response: {response_text}")
 
-            # Try to parse JSON - handle malformed responses
             try:
                 result_data = json.loads(response_text)
             except json.JSONDecodeError as json_err:
-                logger.error(f"JSON parse error: {json_err}")
-                cleaned_text = response_text.strip()
-                # Try to extract valid JSON by cleaning the response
-                cleaned_text = response_text.strip()
+                logger.debug(f"JSON parse error (will retry with cleaning): {json_err}")
+                cleaned_text = re.sub(r',(\s*[}\]])', r'\1', response_text.strip())
                 # Remove markdown code blocks if present
                 if cleaned_text.startswith('```'):
                     cleaned_text = cleaned_text.split(
