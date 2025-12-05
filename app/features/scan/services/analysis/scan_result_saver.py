@@ -27,7 +27,7 @@ class ScanResultSaver:
         try:
             overall_score = int((
                 analysis_result.seo_score +
-                analysis_result.usability_score +
+                analysis_result.accessibility_score +
                 analysis_result.performance_score
             ) / 3)
             
@@ -42,7 +42,7 @@ class ScanResultSaver:
                 page_title=page_title or analysis_result.url,
                 score_overall=overall_score,
                 score_seo=analysis_result.seo_score,
-                score_accessibility=analysis_result.usability_score,
+                score_accessibility=analysis_result.accessibility_score,
                 score_performance=analysis_result.performance_score,
                 load_time_ms=load_time_ms,
                 is_selected_by_llm=True,
@@ -58,7 +58,7 @@ class ScanResultSaver:
                         }
                         for issue in analysis_result.seo_issues
                     ],
-                    "usability_issues": [
+                    "accessibility_issues": [
                         {
                             "title": issue.title,
                             "severity": issue.severity,
@@ -67,7 +67,7 @@ class ScanResultSaver:
                             "business_impact": issue.business_impact,
                             "recommendation": issue.recommendation
                         }
-                        for issue in analysis_result.usability_issues
+                        for issue in analysis_result.accessibility_issues
                     ],
                     "performance_issues": [
                         {
@@ -98,8 +98,8 @@ class ScanResultSaver:
                     business_impact=issue.business_impact
                 )
                 db.add(scan_issue)
-            
-            for issue in analysis_result.usability_issues:
+
+            for issue in analysis_result.accessibility_issues:
                 scan_issue = ScanIssue(
                     scan_page_id=scan_page.id,
                     scan_job_id=job_id,
@@ -125,16 +125,16 @@ class ScanResultSaver:
                 )
                 db.add(scan_issue)
             
-            total_issues = len(analysis_result.seo_issues) + len(analysis_result.usability_issues) + len(analysis_result.performance_issues)
-            critical_count = sum(1 for issue in analysis_result.seo_issues + analysis_result.usability_issues + analysis_result.performance_issues if issue.severity == "high")
-            warning_count = sum(1 for issue in analysis_result.seo_issues + analysis_result.usability_issues + analysis_result.performance_issues if issue.severity == "medium")
-            
+            total_issues = len(analysis_result.seo_issues) + len(analysis_result.accessibility_issues) + len(analysis_result.performance_issues)
+            critical_count = sum(1 for issue in analysis_result.seo_issues + analysis_result.accessibility_issues + analysis_result.performance_issues if issue.severity == "high")
+            warning_count = sum(1 for issue in analysis_result.seo_issues + analysis_result.accessibility_issues + analysis_result.performance_issues if issue.severity == "medium")
+
             scan_page.critical_issues_count = critical_count
             scan_page.warning_issues_count = warning_count
             
             job.score_overall = overall_score
             job.score_seo = analysis_result.seo_score
-            job.score_accessibility = analysis_result.usability_score
+            job.score_accessibility = analysis_result.accessibility_score
             job.score_performance = analysis_result.performance_score
             job.status = ScanJobStatus.completed
             job.completed_at = datetime.utcnow()
@@ -148,7 +148,7 @@ class ScanResultSaver:
             
             db.commit()
             
-            logger.info(f"[{job_id}] Saved scan results: overall={overall_score}, seo={analysis_result.seo_score}, accessibility={analysis_result.usability_score}, performance={analysis_result.performance_score}, issues={total_issues}")
+            logger.info(f"[{job_id}] Saved scan results: overall={overall_score}, seo={analysis_result.seo_score}, accessibility={analysis_result.accessibility_score}, performance={analysis_result.performance_score}, issues={total_issues}")
             
             return overall_score
             

@@ -56,9 +56,9 @@ class ScanResultProcessor:
                 "job_id": job_id,
                 "overall_score": overall_score,
                 "seo_score": analysis_result.seo_score,
-                "accessibility_score": analysis_result.usability_score,
+                "accessibility_score": analysis_result.accessibility_score,
                 "performance_score": analysis_result.performance_score,
-                "total_issues": len(analysis_result.seo_issues) + len(analysis_result.usability_issues) + len(analysis_result.performance_issues),
+                "total_issues": len(analysis_result.seo_issues) + len(analysis_result.accessibility_issues) + len(analysis_result.performance_issues),
                 "success": True
             }
             
@@ -95,9 +95,9 @@ class ScanResultProcessor:
         
         publish_sse_event(job_id, "accessibility_check", {
             "progress": 75,
-            "score": analysis_result.usability_score,
-            "message": f"Accessibility Score: {analysis_result.usability_score}/100",
-            "issues_count": len(analysis_result.usability_issues),
+            "score": analysis_result.accessibility_score,
+            "message": f"Accessibility Score: {analysis_result.accessibility_score}/100",
+            "issues_count": len(analysis_result.accessibility_issues),
             "top_issues": [
                 {
                     "title": issue.title,
@@ -107,7 +107,7 @@ class ScanResultProcessor:
                     "business_impact": issue.business_impact,
                     "score_impact": issue.score_impact
                 }
-                for issue in analysis_result.usability_issues[:3]
+                for issue in analysis_result.accessibility_issues[:3]
             ]
         })
 
@@ -138,8 +138,8 @@ class ScanResultProcessor:
             "message": f"Scan complete! Overall score: {overall_score}/100",
             "scores": {
                 "seo": analysis_result.seo_score,
-                "accessibility": analysis_result.usability_score,
+                "accessibility": analysis_result.accessibility_score,
                 "performance": analysis_result.performance_score
             },
-            "total_issues": len(analysis_result.seo_issues) + len(analysis_result.usability_issues) + len(analysis_result.performance_issues)
+            "total_issues": len(analysis_result.seo_issues) + len(analysis_result.accessibility_issues) + len(analysis_result.performance_issues)
         })
