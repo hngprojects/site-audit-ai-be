@@ -7,6 +7,7 @@ from app.features.scan.services.extraction.extractor_service import ExtractorSer
 from app.features.scan.services.scraping.scraping_service import ScrapingService
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.response import api_response
+from selenium.common.exceptions import TimeoutException
 
 from app.platform.db.session import get_db
 import hashlib
@@ -71,7 +72,7 @@ async def test_extraction(
         )
 
 
-@router.post("", response_model=ScrapingResponse)
+@router.post("")
 async def scrape_pages(
     # data: ScrapingRequest,
     url,
@@ -97,7 +98,7 @@ async def scrape_pages(
 
         try:
             page_url = str(url)
-            driver = ScrapingService.load_page(page_url)
+            driver = ScrapingService.load_page(page_url, timeout=30)  # Increased timeout to 30s
 
             # Extractor Engines
             headings = ExtractorService.extract_headings(driver)
@@ -106,16 +107,34 @@ async def scrape_pages(
             text_content = ExtractorService.extract_text_content(driver)
             metadata = ExtractorService.extract_metadata(driver)
 
+            # Performance Metrics
+            load_time = getattr(driver, "performance_metrics", {}).get("load_time", 0.0)
+            performance_score = ScrapingService.calculate_performance_score(load_time)
+            performance_comment = ScrapingService.get_performance_comment(performance_score)
+
             response_data = {
                 "heading_data" : headings,
                 "images_data" : images,
                 "issues_data" : issues,
                 "text_content_data" : text_content,
                 "metadata_data" : metadata,
+                "performance_data": {
+                    "load_time": load_time,
+                    "score": performance_score,
+                    "comment": performance_comment
+                }
             }
             
             return api_response(data=response_data)
+        except TimeoutException as e:
+            return api_response(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                message=f"Page took too long to load (timeout after 30s). The page may be slow or unresponsive.",
+                data={"url": str(url)}
+            )
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=str(e),
