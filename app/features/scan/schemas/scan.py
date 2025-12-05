@@ -266,31 +266,5 @@ class TogglePageSelectionResponse(BaseModel):
     is_selected: bool
     message: str
 
-class DeleteScanResponse(BaseModel):
-    """Response after deleting a scan."""
-    message: str
-    job_id: str
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "message": "Scan deleted successfully.",
-                "scan_id": "550e8400-e29b-41d4-a716-446655440000"
-            }
-        }
-
-        
-class DeleteScanResponse(BaseModel):
-    """Response after deleting a scan."""
-    message: str
-    job_id: str
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "message": "Scan deleted successfully.",
-                "scan_id": "550e8400-e29b-41d4-a716-446655440000"
-            }
-        }
 
         
