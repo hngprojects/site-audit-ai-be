@@ -42,9 +42,22 @@ class ScrapingService:
             driver.get(url)
             end_time = time.time()
             
+            load_time = end_time - start_time
+            
+            # Determine loading status based on intermediate thresholds
+            if load_time < 1.0:
+                loading_status = "fast"
+            elif load_time < 3.0:
+                loading_status = "normal"
+            elif load_time < 5.0:
+                loading_status = "slow"
+            else:
+                loading_status = "very_slow"
+            
             # Attach performance metrics to driver
             driver.performance_metrics = {
-                "load_time": end_time - start_time
+                "load_time": load_time,
+                "loading_status": loading_status
             }
             
             return driver  # caller is responsible for driver.quit()
@@ -74,8 +87,20 @@ class ScrapingService:
 
 
     @staticmethod
-    def get_performance_comment(score: int) -> str:
-        """Return a text comment based on the performance score."""
+    def get_performance_comment(score: int, loading_status: str = None) -> str:
+        """Return a text comment based on the performance score and loading status."""
+        # If we have loading status, provide process-aware feedback
+        if loading_status:
+            if loading_status == "fast":
+                return "Excellent! The page loaded very quickly."
+            elif loading_status == "normal":
+                return "Good. The page loaded at an acceptable speed."
+            elif loading_status == "slow":
+                return "The page took longer than expected to load. Consider optimization."
+            elif loading_status == "very_slow":
+                return "Warning: The page is loading very slowly. This may impact user experience."
+        
+        # Fallback to score-based comments
         if score >= 90:
             return "Excellent! The page loads very quickly."
         elif score >= 75:
@@ -112,8 +137,9 @@ class ScrapingService:
             
             # Get performance metrics
             load_time = getattr(driver, "performance_metrics", {}).get("load_time", 0.0)
+            loading_status = getattr(driver, "performance_metrics", {}).get("loading_status", None)
             performance_score = ScrapingService.calculate_performance_score(load_time)
-            performance_comment = ScrapingService.get_performance_comment(performance_score)
+            performance_comment = ScrapingService.get_performance_comment(performance_score, loading_status)
             
             return {
                 "url": url,
