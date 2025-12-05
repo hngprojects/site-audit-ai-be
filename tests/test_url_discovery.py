@@ -3,7 +3,9 @@ Test URL Discovery Feature
 
 Tests for the new /scan/discovery/discover-urls endpoint
 """
-from unittest.mock import patch, MagicMock
+import pytest
+from unittest.mock import Mock, patch, MagicMock
+from fastapi import HTTPException
 
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 
@@ -83,11 +85,14 @@ class TestPageDiscoveryService:
 
 class TestDiscoverUrlsEndpoint:
     """Integration tests for the discover-urls endpoint"""
-    
+
     @patch('app.features.scan.routes.discovery.PageDiscoveryService')
     def test_discover_urls_works_without_authentication(self, mock_service_class, client):
-        """Test that endpoint works without authentication (optional auth)"""
-        # Create mock instance
+        """
+        Test that endpoint works without authentication (auth is optional)
+        and correctly calls the discovery + ranking services.
+        """
+        # Create mock instance for the service used in the route
         mock_service_instance = MagicMock()
         mock_service_class.return_value = mock_service_instance
         
@@ -95,44 +100,59 @@ class TestDiscoverUrlsEndpoint:
         mock_service_instance.discover_pages.return_value = [
             "https://example.com",
             "https://example.com/about",
-            "https://example.com/contact"
+            "https://example.com/contact",
         ]
         
-        # Mock LLM ranking (static method)
+        # Mock LLM ranking / annotation (static method on the class)
         mock_service_class.rank_and_annotate_pages.return_value = [
             {
                 "title": "Home",
                 "url": "https://example.com",
                 "priority": "High Priority",
-                "description": "Main landing page"
+                "description": "Main landing page",
             },
             {
                 "title": "About",
                 "url": "https://example.com/about",
                 "priority": "Medium Priority",
-                "description": "About page"
-            }
+                "description": "About page",
+            },
         ]
         
         response = client.post(
             "/api/v1/scan/discovery/discover-urls",
-            json={"url": "https://example.com"}
+            json={"url": "https://example.com"},
         )
         
-        # Should return 200 without auth token (auth is optional)
+        # Endpoint should work without auth token
         assert response.status_code == 200
         data = response.json()
+        
+        # api_response wrapper
         assert data["status"] == "success"
+        assert "data" in data
         assert "important_urls" in data["data"]
         assert len(data["data"]["important_urls"]) > 0
-        mock_service_instance.discover_pages.assert_called_once_with(url="https://example.com/", max_pages=15)
+
+        # Verify discover_pages was called once with correct arguments
+        mock_service_instance.discover_pages.assert_called_once()
+        called_kwargs = mock_service_instance.discover_pages.call_args.kwargs
+        # Be robust to trailing slash differences
+        assert called_kwargs["max_pages"] == 15
+        assert called_kwargs["url"].rstrip("/") == "https://example.com"
+
+        # Verify rank_and_annotate_pages was called once
         mock_service_class.rank_and_annotate_pages.assert_called_once()
+        rank_call_args, rank_call_kwargs = mock_service_class.rank_and_annotate_pages.call_args
+        assert rank_call_kwargs["base_url"].rstrip("/") == "https://example.com"
+        assert rank_call_kwargs["max_pages"] == 10
+        assert rank_call_kwargs["urls"] == mock_service_instance.discover_pages.return_value
     
     def test_discover_urls_validates_url_format(self, client):
         """Test that endpoint validates URL format"""
         response = client.post(
             "/api/v1/scan/discovery/discover-urls",
-            json={"url": "not-a-valid-url"}
+            json={"url": "not-a-valid-url"},
         )
         
         # Should return 400 or 422 for invalid URL format
