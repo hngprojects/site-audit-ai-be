@@ -30,7 +30,7 @@ class ScrapingService:
 
 
     @staticmethod
-    def load_page(url: str, timeout: int = 10) -> webdriver.Chrome:
+    def load_page(url: str, timeout: int = 30) -> webdriver.Chrome:
         """
         Load a page and return the WebDriver instance.
         Caller is responsible for calling driver.quit().
