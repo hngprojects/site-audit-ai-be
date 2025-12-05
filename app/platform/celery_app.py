@@ -58,6 +58,7 @@ def create_celery_app() -> Celery:
         # Define queues
         task_queues=(
             Queue("default"),
+            Queue("celery"),  # For periodic tasks
             Queue("scan.orchestration"),
             Queue("scan.discovery"),
             Queue("scan.selection"),
