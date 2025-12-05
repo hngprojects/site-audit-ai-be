@@ -1,0 +1,251 @@
+import json
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.features.notifications.models.notifications import (
+    Notification,
+    NotificationPriority,
+    NotificationSettings,
+    NotificationType,
+)
+from app.features.notifications.services.push_notification import PushNotificationService
+from app.platform.logger import get_logger
+from app.platform.services.email import send_email
+
+logger = get_logger(__name__)
+
+
+class NotificationService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.push_service = PushNotificationService()
+
+    async def create_notification(
+        self,
+        user_id: str,
+        title: str,
+        message: str,
+        notification_type: Optional[NotificationType] = NotificationType.SYSTEM_ALERT,
+        priority: NotificationPriority = NotificationPriority.MEDIUM,
+        action_url: Optional[str] = None,
+        meta: Optional[str] = None,
+        send_email_notification: bool = True,
+        send_push_notification: bool = True,
+    ) -> Notification:
+        """
+        Create a new notification for a user.
+        """
+        notification = Notification(
+            user_id=user_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            priority=priority,
+            action_url=action_url,
+            meta=json.dumps(meta) if meta else None,
+        )
+        self.db.add(notification)
+        await self.db.commit()
+        await self.db.refresh(notification)
+
+        logger.info(f"Created notification for user {user_id}: {title}")
+
+        # Send email notification if enabled
+        settings = await self.get_user_settings(user_id)
+        if send_email_notification and bool(settings.email_enabled):
+            await self._send_email_notification(user_id, title, message)
+
+        # Broadcast via WebSocket to connected clients
+        await self._send_websocket_notification(notification)
+
+        return notification
+
+    async def get_user_notifications(
+        self,
+        user_id: str,
+        skip: int = 0,
+        limit: int = 50,
+        unread_only: bool = False,
+    ) -> tuple[list[Notification], int, int]:
+        """
+        Get user notifications with pagination.
+        Returns: (notifications, total_count, unread_count)
+        """
+        # Build query
+        query = select(Notification).where(Notification.user_id == user_id)
+
+        if unread_only:
+            query = query.where(Notification.is_read.is_(False))
+
+        # Get total count
+        count_query = (
+            select(func.count()).select_from(Notification).where(Notification.user_id == user_id)
+        )
+        total_result = await self.db.execute(count_query)
+        total_count = total_result.scalar_one()
+
+        # Get unread count
+        unread_query = (
+            select(func.count())
+            .select_from(Notification)
+            .where(and_(Notification.user_id == user_id, Notification.is_read.is_(False)))
+        )
+        unread_result = await self.db.execute(unread_query)
+        unread_count = unread_result.scalar_one()
+
+        query = query.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
+        result = await self.db.execute(query)
+        notifications = result.scalars().all()
+
+        return list(notifications), total_count, unread_count
+
+    async def mark_as_read(self, user_id: str, notification_ids: list[str]) -> int:
+        """
+        Mark notifications as read. Returns number of updated notifications.
+        """
+        if not notification_ids:
+            return 0
+        stmt = (
+            update(Notification)
+            .where(
+                and_(
+                    Notification.id.in_(notification_ids),
+                    Notification.user_id == user_id,
+                    Notification.is_read.is_(False),
+                )
+            )
+            .values(is_read=True, read_at=datetime.now(timezone.utc))
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount  # type: ignore
+
+    async def mark_all_as_read(self, user_id: str) -> int:
+        """
+        Mark all user notifications as read. Returns number of updated notifications.
+        """
+        stmt = (
+            update(Notification).where(
+                and_(Notification.user_id == user_id, Notification.is_read.is_(False))
+            )
+        ).values(is_read=True, read_at=datetime.now(timezone.utc))
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount  # type: ignore
+
+    async def delete_notification(self, user_id: str, notification_id: str) -> bool:
+        """
+        Delete a notification. Returns True if deleted, False if not found.
+        """
+        stmt = delete(Notification).where(
+            and_(Notification.id == notification_id, Notification.user_id == user_id)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount > 0  # type: ignore
+
+    async def delete_all_notifications(self, user_id: str) -> int:
+        """
+        Delete all user notifications. Returns number of deleted notifications.
+        """
+        stmt = delete(Notification).where(Notification.user_id == user_id)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount > 0  # type: ignore
+
+    async def get_user_settings(self, user_id: str) -> NotificationSettings:
+        """
+        Get user notification settings. Creates default settings if they don't exist.
+        """
+        stmt = select(NotificationSettings).where(NotificationSettings.user_id == user_id)
+        result = await self.db.execute(stmt)
+        settings = result.scalar_one_or_none()
+
+        if not settings:
+            settings = NotificationSettings(user_id=user_id)
+            self.db.add(settings)
+            await self.db.commit()
+            await self.db.refresh(settings)
+
+        return settings
+
+    async def create_or_update_settings(
+        self, user_id: str, settings_data: dict[str, Any]
+    ) -> NotificationSettings:
+        """
+        Create or update user notification settings.
+        """
+        settings = await self.get_user_settings(user_id)
+
+        for key, value in settings_data.items():
+            if hasattr(settings, key) and value is not None:
+                setattr(settings, key, value)
+        await self.db.commit()
+        await self.db.refresh(settings)
+        return settings
+
+    async def _send_email_notification(self, user_id: str, title: str, message: str):
+        """Send email notification to user."""
+        from app.features.auth.models.user import User
+
+        stmt = select(User).where(User.id == user_id)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if user and user.email is not None:
+            email_body = f"""
+            <h2>{title}</h2>
+            <p>{message}</p>
+            <p>This is an automated notification from Site Audit AI.</p>
+            """
+            send_email(str(user.email), title, email_body)
+
+    async def _send_push_notification(self):
+        # TODO: push notifications
+        """Send push notification to user's devices."""
+        await self.push_service.send_notification()
+
+    async def _send_websocket_notification(self, notification: Notification):
+        """
+        Broadcast notification via WebSocket to all connected devices.
+
+        Args:
+            notification: The Notification object to broadcast
+        """
+        try:
+            from app.platform.websocket_manager import manager
+
+            # Serialize notification to dictionary
+            notification_data = {
+                "id": str(notification.id),
+                "user_id": str(notification.user_id),
+                "title": notification.title,
+                "message": notification.message,
+                "notification_type": notification.notification_type.value,
+                "priority": notification.priority.value,
+                "action_url": notification.action_url,
+                "is_read": notification.is_read,
+                "created_at": notification.created_at.isoformat(),
+            }
+
+            # Send to user's connected devices
+            message = {"type": "notification", "data": notification_data}
+
+            sent_count = await manager.send_personal_message(message, str(notification.user_id))
+
+            if sent_count > 0:
+                logger.info(
+                    f"WebSocket notification delivered to {sent_count} device(s) for user {notification.user_id}"
+                )
+            else:
+                logger.debug(
+                    f"User {notification.user_id} not connected. WebSocket notification skipped."
+                )
+
+        except Exception as e:
+            # Don't fail notification creation if WebSocket broadcast fails
+            logger.error(f"Failed to send WebSocket notification: {e}")
+

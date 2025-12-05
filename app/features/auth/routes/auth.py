@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Header
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from typing import Optional
 from app.features.auth.models.user import User
+
 from app.features.auth.schemas import (
     AuthResponse,
     ForgetPasswordRequest,
@@ -12,21 +13,25 @@ from app.features.auth.schemas import (
     ResendResetTokenRequest,
 )
 from app.features.auth.schemas.auth import (
-    ChangePasswordRequest,
-    LoginRequest,
     SignupRequest,
-    VerifyEmailRequest,
+    LoginRequest,
+    TokenResponse,
+    UserResponse,
+    ChangePasswordRequest,
+    VerifyEmailRequest
 )
-from app.features.auth.services.auth_service import AuthService
+from app.features.auth.services.auth_service import AuthService, send_password_reset_email
 from app.features.auth.services.email_service import (
     send_account_activation,
     send_password_reset,
+    send_account_deleted
     
 )
 from app.features.auth.utils.security import decode_access_token, generate_otp
 from app.platform.db.session import get_db
 from app.platform.logger import get_logger
 from app.platform.response import api_response
+from app.platform.utils.file_upload import delete_profile_picture 
 
 logger = get_logger("auth_routes")
 blacklisted_tokens = set()
@@ -319,3 +324,38 @@ async def reset_password(request: ForgotResetTokenRequest, db: AsyncSession = De
         raise
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to reset password")
+
+
+
+@router.delete(
+    "/delete-account",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Delete current user account",
+    description="Delete the authenticated user's account and associated data",
+)
+async def delete_account(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Delete the current user's account and send confirmation email."""
+    token = credentials.credentials
+    blacklisted_tokens.add(token)  # revoke current access token
+
+    if user.profile_picture_url:
+        delete_profile_picture(user.profile_picture_url)
+
+    email = user.email
+    display_name = user.first_name or user.username
+
+    await db.delete(user)
+    await db.commit()
+
+    # background_tasks.add_task(send_account_deleted, to_email=email, first_name=display_name)
+
+    return api_response(message="Account deleted successfully", 
+                        data={"email": email},
+                        status_code=status.HTTP_200_OK
+                        )
