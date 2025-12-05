@@ -325,52 +325,6 @@ async def get_scan_history(
     return scans
 
 
-@router.get("/periodic-scans", response_model=dict)
-async def get_user_periodic_scans_route(
-    limit: int = 20,
-    status: Optional[str] = None,
-    site_id: Optional[str] = None,
-    current_user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Get all periodic scans for the authenticated user across all their sites.
-    
-    This endpoint returns scans that were automatically triggered by the 
-    periodic scanning system (via Celery Beat).
-    
-    Query Parameters:
-        - limit: Number of scans to return (default: 20, max: 100)
-        - status: Filter by scan status (queued, discovering, completed, etc.)
-        - site_id: Filter by specific site ID
-        
-    Returns:
-        List of periodic scan jobs with site information and results
-    """
-    # Validate and cap limit
-    if limit > 100:
-        limit = 100
-    
-    logger.info(f"User {current_user.id} fetching periodic scans (Limit: {limit})")
-    
-    scans = await get_user_periodic_scans(
-        user_id=current_user.id,
-        db=db,
-        limit=limit,
-        status_filter=status,
-        site_id_filter=site_id
-    )
-    
-    return api_response(
-        data={
-            "total_scans": len(scans),
-            "scans": scans
-        },
-        message="Periodic scans retrieved successfully",
-        status_code=status.HTTP_200_OK
-    )
-
-
 @router.get("/{job_id}/status", response_model=ScanStatusResponse)
 async def get_scan_status(
     job_id: str,
