@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from fastapi import Depends
+from fastapi import Depends, Response
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import List, Optional
@@ -37,8 +37,6 @@ from app.platform.config import settings
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
-from app.features.scan.services.scan.scan import delete_scan_job
-from app.features.scan.schemas.scan import DeleteScanResponse
 from app.platform.utils.url_validator import validate_url
 
 
@@ -805,10 +803,9 @@ async def stop_scan(
     )
 
 @router.delete(
-    "/{job_id}",  # <-- CONVENTION FIX: Renamed path parameter
-    response_model=DeleteScanResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Delete an individual scan job", # <-- Documentation update
+    "/{job_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an individual scan job",
     description="""
     Task 3: Delete a specific scan job record.
     
@@ -817,18 +814,16 @@ async def stop_scan(
     2. Deletes the scan job and its related records (pages, issues) efficiently
     
     Path Parameters:
-    - job_id: The unique identifier of the scan job to delete # <-- Documentation update
+    - job_id: The unique identifier of the scan job to delete 
     
     Returns:
-    - 200: Scan deleted successfully
+    - 204: Scan deleted successfully
     - 404: Scan not found or doesn't belong to the user
     - 500: Server error during deletion
-    
-    Authentication required: Yes (Bearer token)
     """
 )
 async def delete_scan(
-    job_id: str, # <-- CONVENTION FIX: Renamed function parameter
+    job_id: str,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -836,19 +831,28 @@ async def delete_scan(
     Delete an individual scan record.
     """
     try:
-        # Delete scan through service layer
-        result = await delete_scan_job(
-            db=db,
-            job_id=job_id, # <-- CONVENTION FIX: Passed job_id as scan_id to service
-            user_id=current_user.id
+        scan_result = await db.execute(
+            select(ScanJob).where(
+                ScanJob.id == job_id,
+                ScanJob.user_id == current_user.id,
+            )
         )
-        
-        return api_response(
-            data=[],
-            message="Scan deleted successfully",
-            status_code=status.HTTP_200_OK
-        )
+        scan = scan_result.scalar_one_or_none()
+        if not scan:
+            return api_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Scan not found or not owned by user",
+                data={}
+            )
+
+        await db.delete(scan)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
         
     except Exception as e:
-        logger.error(f"Error in delete_scan endpoint: {e}")
-        raise
+        await db.rollback()
+        logger.error(f"Error deleting scan {job_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting scan"
+        )
