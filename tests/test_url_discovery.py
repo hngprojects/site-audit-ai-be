@@ -3,9 +3,7 @@ Test URL Discovery Feature
 
 Tests for the new /scan/discovery/discover-urls endpoint
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from fastapi import HTTPException
+from unittest.mock import patch, MagicMock
 
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 
