@@ -4,7 +4,7 @@ Scan Schemas
 Request and response models for the scan API endpoints.
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 
 # ============================================================================
@@ -265,3 +265,6 @@ class TogglePageSelectionResponse(BaseModel):
     page_url: str
     is_selected: bool
     message: str
+
+
+        

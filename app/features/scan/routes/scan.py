@@ -7,9 +7,9 @@ from sse_starlette.sse import EventSourceResponse
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, Response
 from sqlalchemy import select, func
 from sqlalchemy.orm import aliased
-from fastapi import Depends
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import List, Optional
@@ -20,7 +20,7 @@ from app.features.scan.schemas.scan import (
     ScanStartResponse,
     ScanStatusResponse,
     ScanResultsResponse,
-    ScanHistoryItem
+    ScanHistoryItem, 
 )
 from app.features.scan.workers.tasks import run_single_page_scan_sse
 from app.features.auth.routes.auth import get_current_user, decode_access_token
@@ -874,3 +874,58 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
+
+@router.delete(
+    "/{job_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an individual scan job",
+    description="""
+    Task 3: Delete a specific scan job record.
+    
+    This endpoint:
+    1. Verifies the scan job belongs to the authenticated user
+    2. Deletes the scan job and its related records (pages, issues) efficiently
+    
+    Path Parameters:
+    - job_id: The unique identifier of the scan job to delete 
+    
+    Returns:
+    - 204: Scan deleted successfully
+    - 404: Scan not found or doesn't belong to the user
+    - 500: Server error during deletion
+    """
+)
+async def delete_scan(
+    job_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete an individual scan record.
+    """
+    try:
+        scan_result = await db.execute(
+            select(ScanJob).where(
+                ScanJob.id == job_id,
+                ScanJob.user_id == current_user.id,
+            )
+        )
+        scan = scan_result.scalar_one_or_none()
+        if not scan:
+            return api_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Scan not found or not owned by user",
+                data={}
+            )
+
+        await db.delete(scan)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error deleting scan {job_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting scan"
+        )
