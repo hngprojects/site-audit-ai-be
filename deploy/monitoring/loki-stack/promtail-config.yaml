@@ -1,0 +1,75 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: staging-backend-api-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: staging-backend-api-logs
+          __path__: /app/logs/sitelytics-staging-api-error.log
+
+    pipeline_stages:
+      # Basic log level parsing
+      - regex:
+          expression: '(?i)(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)'
+
+      - labels:
+          level:
+
+  - job_name: staging-backend-celery-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: staging-backend-celery-logs
+          __path__: /app/logs/sitelytics-staging-celery-error.log
+
+    pipeline_stages:
+      # Basic log level parsing
+      - regex:
+          expression: '(?i)(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)'
+
+      - labels:
+          level:
+          
+  - job_name: prod-backend-api-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: prod-backend-api-logs
+          __path__: /app/logs/sitelytics-prod-api-error.log
+
+    pipeline_stages:
+      # Basic log level parsing
+      - regex:
+          expression: '(?i)(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)'
+
+      - labels:
+          level:
+          
+  - job_name: prod-backend-celery-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: prod-backend-celery-logs
+          __path__: /app/logs/sitelytics-prod-celery-error.log
+
+    pipeline_stages:
+      # Basic log level parsing
+      - regex:
+          expression: '(?i)(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL)'
+
+      - labels:
+          level:
+          
