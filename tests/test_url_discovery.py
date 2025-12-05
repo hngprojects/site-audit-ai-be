@@ -125,7 +125,7 @@ class TestDiscoverUrlsEndpoint:
         assert data["status"] == "success"
         assert "important_urls" in data["data"]
         assert len(data["data"]["important_urls"]) > 0
-        mock_service_instance.discover_pages.assert_called_once_with(url="https://example.com", max_pages=15)
+        mock_service_instance.discover_pages.assert_called_once_with(url="https://example.com/", max_pages=15)
         mock_service_class.rank_and_annotate_pages.assert_called_once()
     
     def test_discover_urls_validates_url_format(self, client):
