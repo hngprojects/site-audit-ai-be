@@ -3,11 +3,6 @@ from sqlalchemy.orm import relationship
 from app.platform.db.base import BaseModel
 import enum
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import relationship
-
-from app.platform.db.base import BaseModel
-
 
 class SiteStatus(enum.Enum):
     active = "active"
@@ -18,9 +13,9 @@ class SiteStatus(enum.Enum):
 class ScanFrequency(enum.Enum):
     """Periodic scan frequency options"""
     disabled = "disabled"
-    daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
+    quarterly = "quarterly"  # Every 90 days
 
 
 class Site(BaseModel):

@@ -71,7 +71,21 @@ def check_and_trigger_periodic_scans(self):
                 db.add(scan_job)
                 db.flush()  # Get the job ID
                 
-                # Trigger async scan pipeline
+                # Update next_scheduled_scan based on frequency
+                if site.scan_frequency == ScanFrequency.weekly:
+                    site.next_scheduled_scan = now + timedelta(days=7)
+                elif site.scan_frequency == ScanFrequency.monthly:
+                    site.next_scheduled_scan = now + timedelta(days=30)
+                elif site.scan_frequency == ScanFrequency.quarterly:
+                    site.next_scheduled_scan = now + timedelta(days=90)
+                
+                site.last_periodic_scan_at = now
+                
+                # IMPORTANT: Commit BEFORE triggering Celery task
+                # This ensures the scan_job exists in DB when worker tries to access it
+                db.commit()
+                
+                # Trigger async scan pipeline AFTER commit
                 # Get user email and name for notification
                 user_email = None
                 user_name = None
@@ -92,17 +106,6 @@ def check_and_trigger_periodic_scans(self):
                     notification_email=user_email,
                     user_name=user_name
                 )
-                
-                # Update next_scheduled_scan based on frequency
-                if site.scan_frequency == ScanFrequency.daily:
-                    site.next_scheduled_scan = now + timedelta(days=1)
-                elif site.scan_frequency == ScanFrequency.weekly:
-                    site.next_scheduled_scan = now + timedelta(days=7)
-                elif site.scan_frequency == ScanFrequency.monthly:
-                    site.next_scheduled_scan = now + timedelta(days=30)
-                
-                site.last_periodic_scan_at = now
-                db.commit()
                 
                 logger.info(f"Scheduled next scan for {site.root_url} at {site.next_scheduled_scan}")
                 
