@@ -328,7 +328,7 @@ async def get_scan_history(
 @router.get("/periodic-scans", response_model=dict)
 async def get_user_periodic_scans_route(
     limit: int = 20,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     site_id: Optional[str] = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -357,7 +357,7 @@ async def get_user_periodic_scans_route(
         user_id=current_user.id,
         db=db,
         limit=limit,
-        status_filter=status,
+        status_filter=status_filter,
         site_id_filter=site_id
     )
     

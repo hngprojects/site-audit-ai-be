@@ -4,6 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from app.features.scan.models.scan_job import ScanJob
 from app.features.sites.models.site import Site
+
+
 async def get_user_periodic_scans(
     user_id: str,
     db: AsyncSession,
