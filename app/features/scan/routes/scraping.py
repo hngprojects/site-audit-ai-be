@@ -72,7 +72,7 @@ async def test_extraction(
         )
 
 
-@router.post("")
+@router.post("", response_model=ScrapingResponse)
 async def scrape_pages(
     # data: ScrapingRequest,
     url,
