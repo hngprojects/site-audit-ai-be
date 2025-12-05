@@ -1,12 +1,13 @@
 from fastapi import APIRouter, status, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, HttpUrl
-from typing import List
+from typing import List, Optional
 
 from app.features.scan.schemas.scan import DiscoveryRequest, DiscoveryResponse
 from app.features.scan.services.discovery.page_discovery import PageDiscoveryService
 from app.features.scan.services.analysis.page_selector import PageSelectorService
-from app.features.auth.routes.auth import get_current_user
+from app.features.auth.routes.auth import get_current_user, decode_access_token
 from app.features.auth.models.user import User
 from app.platform.response import api_response
 from app.platform.db.session import get_db
@@ -32,8 +33,10 @@ class DiscoverUrlsRequest(BaseModel):
 
 class DiscoveredUrl(BaseModel):
     """Individual discovered URL with metadata"""
+    title: str
     url: str
-    rank: int  # 1-10, with 1 being most important
+    priority: str  # "High Priority", "Medium Priority", "Low Priority"
+    description: str
 
 
 class DiscoverUrlsResponse(BaseModel):
@@ -94,7 +97,7 @@ async def discover_pages(
 @router.post("/discover-urls", response_model=DiscoverUrlsResponse)
 async def discover_important_urls(
     data: DiscoverUrlsRequest,
-    current_user: User = Depends(get_current_user),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -107,7 +110,7 @@ async def discover_important_urls(
     4. Uses LLM (OpenRouter) to rank pages by importance
     5. Returns top 10 most important URLs
     
-    **Authentication:** Required - only logged-in users can access
+    **Authentication:** Optional - works for both authenticated and anonymous users
     
     **Returns:**
     - List of top 10 URLs ranked by importance
@@ -123,8 +126,18 @@ async def discover_important_urls(
             "base_url": "https://example.com",
             "discovered_count": 15,
             "important_urls": [
-                {"url": "https://example.com", "rank": 1},
-                {"url": "https://example.com/about", "rank": 2}
+                {
+                    "title": "Home",
+                    "url": "https://example.com",
+                    "priority": "High Priority",
+                    "description": "Your main landing page, and the first impression customers get of your brand"
+                },
+                {
+                    "title": "About",
+                    "url": "https://example.com/about",
+                    "priority": "Medium Priority",
+                    "description": "This page tells visitors about your company, mission, and team"
+                }
             ],
             "message": "Successfully discovered 10 important URLs"
         }
@@ -142,7 +155,16 @@ async def discover_important_urls(
                 detail=f"Invalid URL: {error_message}"
             )
         
-        logger.info(f"User {current_user.id} initiated URL discovery for {validated_url}")
+        # Get user if authenticated (optional)
+        user_id = None
+        if credentials:
+            try:
+                payload = decode_access_token(credentials.credentials)
+                user_id = payload.get("sub")
+            except Exception:
+                pass  # Continue without authentication
+        
+        logger.info(f"User {user_id or 'anonymous'} initiated URL discovery for {validated_url}")
         
         # Step 1: Discover up to 15 pages
         discovery_service = PageDiscoveryService()
@@ -164,19 +186,16 @@ async def discover_important_urls(
         
         logger.info(f"Discovered {len(discovered_pages)} pages from {validated_url}")
         
-        # Step 2: Use LLM to select top 10 important pages
-        selector_service = PageSelectorService()
-        selected_urls = selector_service.filter_important_pages(
-            pages=discovered_pages,
-            top_n=10,
-            referer=validated_url,
-            site_title=f"URL Discovery for {validated_url}"
+        # Step 2: Use LLM to rank and generate metadata for top 10 important pages
+        annotated_pages = PageDiscoveryService.rank_and_annotate_pages(
+            base_url=validated_url,
+            urls=discovered_pages,
+            max_pages=10
         )
         
-        # Step 3: Format response with ranking
+        # Convert to DiscoveredUrl objects
         important_urls = [
-            DiscoveredUrl(url=url, rank=idx + 1) 
-            for idx, url in enumerate(selected_urls)
+            DiscoveredUrl(**page) for page in annotated_pages
         ]
         
         logger.info(f"Selected {len(important_urls)} important URLs for {validated_url}")
@@ -186,7 +205,7 @@ async def discover_important_urls(
             data={
                 "base_url": validated_url,
                 "discovered_count": len(discovered_pages),
-                "important_urls": important_urls,
+                "important_urls": [url.dict() for url in important_urls],
                 "message": f"Successfully discovered {len(important_urls)} important URLs"
             }
         )
@@ -194,7 +213,7 @@ async def discover_important_urls(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"URL discovery failed for user {current_user.id}: {e}", exc_info=True)
+        logger.error(f"URL discovery failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to discover URLs: {str(e)}"
