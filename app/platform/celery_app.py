@@ -50,6 +50,7 @@ def create_celery_app() -> Celery:
             # Orchestrator tasks
             "app.features.scan.workers.tasks.run_scan_pipeline": {"queue": "scan.orchestration"},
             "app.features.scan.workers.tasks.process_selected_pages": {"queue": "scan.orchestration"},
+            "app.features.scan.workers.tasks.run_single_page_scan_sse": {"queue": "scan.orchestration"},
             # Periodic tasks go to default celery queue
             "app.features.scan.workers.periodic_tasks.check_and_trigger_periodic_scans": {"queue": "celery"},
             "app.features.scan.workers.periodic_tasks.send_scan_completion_email": {"queue": "celery"},

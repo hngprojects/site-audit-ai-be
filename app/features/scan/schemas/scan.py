@@ -4,7 +4,7 @@ Scan Schemas
 Request and response models for the scan API endpoints.
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 
 # ============================================================================
@@ -14,14 +14,14 @@ from datetime import datetime
 class ScanStartRequest(BaseModel):
     """Request to start a complete scan."""
     url: HttpUrl
-    top_n: int = 15
+    top_n: int = 5
     user_id: Optional[str] = None  # For authenticated users
     
     class Config:
         json_schema_extra = {
             "example": {
                 "url": "https://example.com",
-                "top_n": 15
+                "top_n": 5
             }
         }
 
@@ -119,7 +119,7 @@ class DiscoveryResponse(BaseModel):
 class SelectionRequest(BaseModel):
     """Request for page selection phase."""
     pages: List[str]
-    top_n: int = 15
+    top_n: int = 5
     job_id: Optional[str] = None
     referer: Optional[str] = None
     site_title: Optional[str] = None
@@ -128,7 +128,7 @@ class SelectionRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "pages": ["https://example.com", "https://example.com/about"],
-                "top_n": 15,
+                "top_n": 5,
                 "job_id": "550e8400-e29b-41d4-a716-446655440000"
             }
         }
@@ -266,6 +266,8 @@ class TogglePageSelectionResponse(BaseModel):
     is_selected: bool
     message: str
 
+
+        
 
 # ============================================================================
 # Periodic Scan Schemas

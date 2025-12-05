@@ -59,7 +59,7 @@ API for website auditing and analysis, built with FastAPI, SQLAlchemy (async), A
 - **API router registration**: `app/api_routers/v1.py`
 - **App entrypoint**: `app/main.py`
 
-## 🔧 Setup & Development
+##  Setup & Development
 
 ### Clone the Repository
 
@@ -107,3 +107,6 @@ pytest
 ---
 
 Built with ❤️ using FastAPI and modern Python tools
+
+## 📬 Postman Collection
+https://elements.getpostman.com/redirect?entityId=41523557-0ef52a59-0512-40b8-a3db-9fd3fea0020f&entityType=collection

@@ -1,6 +1,7 @@
 import os
 import smtplib
 import ssl
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -22,6 +23,70 @@ env = Environment(loader=FileSystemLoader(template_dir))
 
 
 def send_email(to_email: str, subject: str, body: str):
+    """
+    Send email via HTTP relay service
+    Falls back to direct SMTP if relay is not configured.
+    """
+    if settings.EMAIL_RELAY_URL and settings.EMAIL_RELAY_API_KEY:
+        try:
+            send_email_via_relay(to_email, subject, body)
+            return
+        except Exception as e:
+            logger.error(f"Email relay failed: {str(e)}")
+            logger.info("Attempting direct SMTP as fallback...")
+            try:
+                send_email_direct_smtp(to_email, subject, body)
+            except Exception as smtp_e:
+                logger.error(f"SMTP fallback also failed: {str(smtp_e)}")
+                raise smtp_e
+    else:
+        logger.warning("Email relay not configured, attempting direct SMTP")
+        send_email_direct_smtp(to_email, subject, body)
+
+
+def send_email_via_relay(to_email: str, subject: str, body: str):
+    """Send email via HTTP relay service"""
+    payload = {
+        "to_email": to_email,
+        "subject": subject,
+        "body": body,
+        "from_address": settings.MAIL_FROM_ADDRESS
+    }
+    
+    headers = {
+        "X-API-Key": settings.EMAIL_RELAY_API_KEY,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        response = requests.post(
+            settings.EMAIL_RELAY_URL,
+            json=payload,
+            headers=headers,
+            timeout=settings.EMAIL_RELAY_TIMEOUT
+        )
+        
+        response.raise_for_status()
+        
+        result = response.json()
+        logger.info(f"Email sent via relay to {to_email}: {result.get('message')}")
+        
+    except requests.exceptions.Timeout:
+        logger.error(f"Email relay timeout for {to_email}")
+        raise Exception("Email relay service timeout")
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Email relay request failed: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}")
+            logger.error(f"Response body: {e.response.text}")
+        raise Exception(f"Email relay service error: {str(e)}")
+    
+    except Exception as e:
+        logger.error(f"Unexpected error sending email via relay: {str(e)}")
+        raise
+
+def send_email_direct_smtp(to_email: str, subject: str, body: str):
     """Base function to send email via SMTP"""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject

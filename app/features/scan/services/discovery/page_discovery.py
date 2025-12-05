@@ -1,86 +1,97 @@
+import os
 import logging
+import tempfile
 from typing import List
+from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
-import tempfile
-import os
+from app.platform.config import settings
 
-# Cache ChromeDriver path to avoid repeated downloads
 _CHROMEDRIVER_PATH = None
 
 logger = logging.getLogger(__name__)
 
-
 class PageDiscoveryService:
     
     @staticmethod
-    def discover_pages(url: str, max_pages: int = 100) -> List[str]:
-        # Create temp directory for Chrome user data to avoid DevToolsActivePort issues
-        temp_dir = tempfile.mkdtemp()
+    def discover_pages(url: str, max_pages: int = 15) -> List[str]:
+        """
+        Discover pages from a website using Selenium.
         
+        Args:
+            url: Base URL to start discovery from
+            max_pages: Maximum number of pages to discover (default: 15)
+            
+        Returns:
+            List of discovered URLs (all from same base domain)
+        """
         chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
         
-        # Core headless options
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        
-        # Critical: Use temp directory for user data
-        chrome_options.add_argument(f"--user-data-dir={temp_dir}")
-        chrome_options.add_argument("--data-path={}".format(os.path.join(temp_dir, "data")))
-        chrome_options.add_argument("--disk-cache-dir={}".format(os.path.join(temp_dir, "cache")))
-        
-        # Disable DevTools completely
-        chrome_options.add_argument("--disable-dev-tools")
-        chrome_options.add_argument("--remote-debugging-port=0")
-        
-        # Performance and stability options
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-software-rasterizer")
-        chrome_options.add_argument("--disable-background-networking")
-        chrome_options.add_argument("--disable-default-apps")
-        chrome_options.add_argument("--disable-sync")
-        chrome_options.add_argument("--disable-translate")
-        chrome_options.add_argument("--mute-audio")
-        chrome_options.add_argument("--hide-scrollbars")
-        chrome_options.add_argument("--metrics-recording-only")
-        chrome_options.add_argument("--no-first-run")
-        chrome_options.add_argument("--safebrowsing-disable-auto-update")
-        chrome_options.add_argument("--ignore-certificate-errors")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--start-maximized")
-        
-        # Disable automation flags
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Use webdriver-manager with caching to avoid repeated downloads
-        global _CHROMEDRIVER_PATH
-        if _CHROMEDRIVER_PATH is None:
-            _CHROMEDRIVER_PATH = ChromeDriverManager().install()
-        
-        service = Service(_CHROMEDRIVER_PATH)
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        driver.get(url)
-        visited = set()
-        to_visit = [url]
-        pages = []
+        if settings.CHROMEDRIVER_PATH:
+            driver_service = Service(executable_path=settings.CHROMEDRIVER_PATH)
+            driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+        else:
+            driver = webdriver.Chrome(options=chrome_options)
 
-        while to_visit and len(visited) < max_pages:
-            current = to_visit.pop()
-            if current in visited:
-                continue
-            visited.add(current)
-            driver.get(current)
-            pages.append(current)
-            links = driver.find_elements(By.TAG_NAME, "a")
-            for link in links:
-                href = link.get_attribute("href")
-                if href and href.startswith(url) and href not in visited:
-                    to_visit.append(href)
-        driver.quit()
-        return pages
+        try:
+            # Parse base URL for domain validation
+            base_parsed = urlparse(url)
+            base_domain = f"{base_parsed.scheme}://{base_parsed.netloc}"
+            
+            driver.get(url)
+            visited = set()
+            to_visit = [url]
+            pages = []
+
+            while to_visit and len(visited) < max_pages:
+                current = to_visit.pop(0)  # Use BFS (pop from front)
+                if current in visited:
+                    continue
+                visited.add(current)
+                
+                try:
+                    driver.get(current)
+                    pages.append(current)
+                    
+                    links = driver.find_elements(By.TAG_NAME, "a")
+                    for link in links:
+                        href = link.get_attribute("href")
+                        if href and PageDiscoveryService._is_same_domain(href, base_domain):
+                            if href not in visited and href not in to_visit:
+                                to_visit.append(href)
+                except Exception as e:
+                    logger.warning(f"Failed to load page {current}: {e}")
+                    continue
+                    
+            logger.info(f"Discovered {len(pages)} pages from {url}")
+            return pages
+        finally:
+            driver.quit()
+    
+    @staticmethod
+    def _is_same_domain(url: str, base_domain: str) -> bool:
+        """
+        Check if URL belongs to the same domain as base.
+        
+        Args:
+            url: URL to check
+            base_domain: Base domain (e.g., "https://example.com")
+            
+        Returns:
+            True if URL is from same domain, False otherwise
+        """
+        try:
+            parsed = urlparse(url)
+            # Ensure URL has a valid scheme and netloc
+            if not parsed.scheme or not parsed.netloc:
+                return False
+            url_domain = f"{parsed.scheme}://{parsed.netloc}"
+            return url_domain == base_domain
+        except Exception:
+            return False
