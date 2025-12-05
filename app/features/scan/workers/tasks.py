@@ -249,8 +249,7 @@ def discover_pages(
                       started_at=datetime.utcnow())
 
     try:
-        discovery_service = PageDiscoveryService()
-        pages = discovery_service.discover_pages(url=url, max_pages=max_pages)
+        pages = PageDiscoveryService.discover_pages(url=url, max_pages=max_pages)
 
         # Store discovered pages in DB
         _save_discovered_pages(job_id, pages)

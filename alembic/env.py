@@ -35,6 +35,9 @@ load_dotenv()
 db_url = os.getenv("DATABASE_URL")
 if db_url:
     db_url = db_url.replace("+asyncpg", "").replace("+aiosqlite", "")
+else:
+    # Fallback if DATABASE_URL is not set (Alembic uses psycopg2 by default, no need for +psycopg2)
+    db_url = "postgresql://site_audit_user:supersecret@localhost:5432/site_audit_db"
 
 
 # this is the Alembic Config object, which provides

@@ -15,11 +15,11 @@ async def discover_pages(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Phase 1: Discover all pages from a website using Selenium.
+    Phase 1: Discover important pages from a website using LLM.
     
     This endpoint:
-    - Crawls the website using headless Chrome
-    - Returns list of discovered URLs
+    - Uses LLM to analyze the website URL and identify important pages
+    - Returns list of discovered URLs (up to 10 important pages)
     
     Later-> Called by: Discovery worker after scan is queued
     
