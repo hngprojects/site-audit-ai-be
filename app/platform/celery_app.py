@@ -59,6 +59,7 @@ def create_celery_app() -> Celery:
         # Define queues
         task_queues=(
             Queue("default"),
+            Queue("celery"),  # For periodic tasks
             Queue("scan.orchestration"),
             Queue("scan.discovery"),
             Queue("scan.selection"),
@@ -82,7 +83,7 @@ def create_celery_app() -> Celery:
         beat_schedule={
             "check-periodic-scans": {
                 "task": "app.features.scan.workers.periodic_tasks.check_and_trigger_periodic_scans",
-                "schedule": 3600.0,  # Run every hour (3600 seconds)
+                "schedule": 86400.0,  # Run once daily (86400 seconds = 24 hours)
             },
         },
     )

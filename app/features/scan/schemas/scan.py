@@ -271,4 +271,30 @@ class TogglePageSelectionResponse(BaseModel):
     message: str
 
 
+# ============================================================================
+# Periodic Scan Schemas
+# ============================================================================
+
+class PeriodicScanItem(BaseModel):
+    """Single periodic scan result"""
+    job_id: str
+    site_id: str
+    site_url: str
+    site_display_name: Optional[str]
+    scan_frequency: str
+    status: str
+    score_overall: Optional[int]
+    score_seo: Optional[int]
+    score_accessibility: Optional[int]
+    score_performance: Optional[int]
+    score_design: Optional[int]
+    total_issues: int
+    critical_issues_count: int
+    warning_issues_count: int
+    created_at: datetime
+    completed_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
         
