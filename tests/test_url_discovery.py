@@ -86,7 +86,7 @@ class TestPageDiscoveryService:
 class TestDiscoverUrlsEndpoint:
     """Integration tests for the discover-urls endpoint"""
 
-    @patch('app.features.scan.routes.discovery.PageDiscoveryService._fallback_selection')
+    @patch('app.features.scan.routes.discovery.PageDiscoveryService.fallback_selection')
     @patch('app.features.scan.routes.discovery.PageDiscoveryService.discover_pages')
     def test_discover_urls_works_without_authentication(
         self,
