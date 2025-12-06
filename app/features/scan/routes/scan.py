@@ -42,6 +42,7 @@ from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
 from app.platform.config import settings
 from app.platform.db.session import get_db
+from app.features.scan.services.orchestration.periodic_scans import get_user_periodic_scans
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
 from app.platform.utils.url_validator import validate_url

@@ -151,9 +151,9 @@ async def get_all_sites(
     Configure periodic scanning settings for a site.    
     
     Scan Frequency Options:
-    - daily: Scan once every 24 hours
     - weekly: Scan once every 7 days
     - monthly: Scan once every 30 days
+    - quarterly: Scan once every 90 days
     - disabled: Disable periodic scanning 
     
     Parameters:

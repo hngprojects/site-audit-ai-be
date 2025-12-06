@@ -158,12 +158,13 @@ async def update_site_scan_frequency(
     next_scheduled_scan = None
     if scan_frequency_enabled and scan_frequency != ScanFrequency.disabled:
         now = datetime.utcnow()
-        if scan_frequency == ScanFrequency.daily:
-            next_scheduled_scan = now + timedelta(days=1)
-        elif scan_frequency == ScanFrequency.weekly:
+        if scan_frequency == ScanFrequency.weekly:
             next_scheduled_scan = now + timedelta(days=7)
         elif scan_frequency == ScanFrequency.monthly:
             next_scheduled_scan = now + timedelta(days=30)
+        elif scan_frequency == ScanFrequency.quarterly:
+            next_scheduled_scan = now + timedelta(days=90)
+
     
     # Update the site
     site.scan_frequency = scan_frequency
