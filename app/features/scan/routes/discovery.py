@@ -138,8 +138,7 @@ async def discover_important_urls(
                     "priority": "Medium Priority",
                     "description": "This page tells visitors about your company, mission, and team"
                 }
-            ],
-            "message": "Successfully discovered 10 important URLs"
+            ]
         }
     }
     ```
@@ -216,5 +215,5 @@ async def discover_important_urls(
         logger.error(f"URL discovery failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to discover URLs: {str(e)}"
+            detail="Failed to discover URLs. Please try again later."
         )
