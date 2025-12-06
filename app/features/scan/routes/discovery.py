@@ -44,57 +44,9 @@ class DiscoverUrlsResponse(BaseModel):
     message: str
 
 
-@router.post("", response_model=DiscoveryResponse)
-async def discover_pages(
-    data: DiscoveryRequest,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Phase 1: Discover all pages from a website using Selenium.
-    
-    This endpoint:
-    - Crawls the website using headless Chrome
-    - Returns list of discovered URLs
-    
-    Later-> Called by: Discovery worker after scan is queued
-    
-    Args:
-        data: DiscoveryRequest with url and optional job_id
-        db: Database session
-        
-    Returns:
-        DiscoveryResponse with discovered pages
-    """
-    try:
-        # Run discovery
-        pages = PageDiscoveryService.discover_pages(str(data.url))
-        
-        # TODO: If job_id provided, update ScanJob record
-        # - Set status = 'discovered'
-        # - Set discovered_pages_count = len(pages)
-        # - Queue next phase (selection)
-        
-        return api_response(
-            data={
-                "pages": pages,
-                "count": len(pages),
-                "job_id": data.job_id
-            }
-        )
-        
-    except Exception as e:
-        # TODO: If job_id provided, mark discovery_status = 'failed'
-        return api_response(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message=f"Discovery failed: {str(e)}",
-            data={}
-        )
-
-
 @router.post("/discover-urls", response_model=DiscoverUrlsResponse)
 async def discover_important_urls(
     data: DiscoverUrlsRequest,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -134,21 +86,16 @@ async def discover_important_urls(
     try:
         url_str = str(data.url)
         
-        # Validate URL
         is_valid, validated_url, error_message = validate_url(url_str)
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid URL: {error_message}"
-            )
+            )       
         
-        logger.info(f"User {current_user.id} initiated URL discovery for {validated_url}")
-        
-        # Step 1: Discover up to 15 pages
-        discovery_service = PageDiscoveryService()
-        discovered_pages = discovery_service.discover_pages(
+        discovered_pages = PageDiscoveryService.discover_pages(
             url=validated_url,
-            max_pages=15
+            max_pages=10
         )
         
         if not discovered_pages:
@@ -164,19 +111,10 @@ async def discover_important_urls(
         
         logger.info(f"Discovered {len(discovered_pages)} pages from {validated_url}")
         
-        # Step 2: Use LLM to select top 10 important pages
-        selector_service = PageSelectorService()
-        selected_urls = selector_service.filter_important_pages(
-            pages=discovered_pages,
-            top_n=10,
-            referer=validated_url,
-            site_title=f"URL Discovery for {validated_url}"
-        )
         
-        # Step 3: Format response with ranking
         important_urls = [
             DiscoveredUrl(url=url, rank=idx + 1) 
-            for idx, url in enumerate(selected_urls)
+            for idx, url in enumerate(discovered_pages)
         ]
         
         logger.info(f"Selected {len(important_urls)} important URLs for {validated_url}")
@@ -194,7 +132,6 @@ async def discover_important_urls(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"URL discovery failed for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to discover URLs: {str(e)}"

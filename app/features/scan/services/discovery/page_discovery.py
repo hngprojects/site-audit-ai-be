@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 class PageDiscoveryService:
     
     @staticmethod
-    def discover_pages(url: str, max_pages: int = 15) -> List[str]:
+    def discover_pages(url: str, max_pages: int = 10) -> List[str]:
         """
         Discover pages from a website using Selenium.
         
         Args:
             url: Base URL to start discovery from
-            max_pages: Maximum number of pages to discover (default: 15)
+            max_pages: Maximum number of pages to discover (default: 10)
             
         Returns:
             List of discovered URLs (all from same base domain)
