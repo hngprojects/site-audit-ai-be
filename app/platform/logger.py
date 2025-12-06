@@ -18,10 +18,12 @@ def get_logger(name: str):
     # Create a custom logger
     logger = logging.getLogger(name)
 
-    if logger.handlers:
+    # Prevent adding duplicate handlers
+    if logger.hasHandlers():
         return logger
 
     logger.setLevel(logging.INFO)
+    logger.propagate = False  # Prevent propagation to root logger
 
     # 3. Create Formatters (How the log looks)
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")

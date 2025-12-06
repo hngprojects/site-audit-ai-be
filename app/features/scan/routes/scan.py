@@ -1,21 +1,35 @@
-from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+import asyncio
+import redis
+import json
+import hashlib
+from urllib.parse import urlparse
+from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import Depends
+from fastapi import Depends, Response
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import List, Optional
 import hashlib
 from app.platform.logger import get_logger
+from app.platform.utils.device import parse_device_header, generate_ip_fingerprint
+from app.features.scan.services.device.device_service import (
+    get_or_create_device_session,
+    check_rate_limit,
+    increment_scan_count
+)
 from app.features.scan.schemas.scan import (
     ScanStartRequest,
     ScanStartResponse,
     ScanStatusResponse,
     ScanResultsResponse,
-    ScanHistoryItem
+    ScanHistoryItem, 
 )
-from app.features.auth.routes.auth import get_current_user
+from app.features.scan.workers.tasks import run_single_page_scan_sse
+from app.features.auth.routes.auth import get_current_user, decode_access_token
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.features.scan.models.scan_issue import ScanIssue
@@ -26,18 +40,204 @@ from app.features.scan.services.analysis.page_analyzer import PageAnalyzerServic
 from app.features.scan.services.orchestration.history import get_user_scan_history
 from app.features.scan.services.scan.scan import stop_scan_job
 from app.platform.response import api_response
+from app.platform.config import settings
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
+from app.platform.utils.url_validator import validate_url
+
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
+@router.post("/start-scan-sse")
+async def start_scan_sse(
+    url: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+):
+    try:
+
+        is_valid, url_str, error_message = validate_url(url)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid URL: {error_message}"
+            )
+        
+        parsed = urlparse(url_str)
+        
+        # Extract user_id from token if authenticated
+        user_id = None
+        if credentials:
+            try:
+                payload = decode_access_token(credentials.credentials)
+                user_id = payload.get("sub")
+            except Exception:
+                pass
+        
+        device_id_raw, platform = parse_device_header(request)
+        
+        # Require either user_id OR device_id
+        if not user_id and not device_id_raw:
+            # Fallback to IP-based identifier for rate limiting
+            device_id_raw = generate_ip_fingerprint(request)
+            platform = "web"
+            logger.warning(f"[SSE] No user_id or device_id provided for {url_str}, using IP fallback")
+        
+        # Log authentication status for error tracking
+        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
+        logger.info(f"[SSE] Scan request: url={url_str}, auth_status={auth_status}, user_id={user_id}, platform={platform}")
+        
+        # Get or create device session for tracking
+        user_agent = request.headers.get("user-agent")
+        device_session = await get_or_create_device_session(
+            db=db,
+            device_id=device_id_raw,
+            platform=platform,
+            user_agent=user_agent,
+            user_id=user_id
+        )
+        
+        # Check rate limits
+        is_allowed, remaining, message = await check_rate_limit(db, device_session, user_id, is_ip_fallback)
+        if not is_allowed:
+            logger.warning(f"[SSE] Rate limit exceeded: {message} (user_id={user_id}, device={device_session.device_hash[:8]}...)")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
+            )
+        
+        device_id = device_id_raw if not user_id else None
+        
+        if user_id:
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.user_id == user_id
+            )
+        else:
+            site_query = select(Site).where(
+                Site.root_url == url_str,
+                Site.device_id == device_id
+            )
+        
+        result = await db.execute(site_query)
+        site = result.scalar_one_or_none()
+        
+        if not site:
+            site = Site(
+                user_id=user_id,
+                device_id=device_id,
+                root_url=url_str,
+                total_scans=0
+            )
+            db.add(site)
+            await db.flush()
+        
+        scan_job = ScanJob(
+            user_id=user_id,
+            device_id=device_id,
+            site_id=site.id,
+            status=ScanJobStatus.queued,
+            queued_at=datetime.utcnow()
+        )
+        db.add(scan_job)
+        await db.flush()
+        
+        # Increment scan counter in device session
+        await increment_scan_count(db, device_session)
+        
+        await db.commit()
+        await db.refresh(scan_job)
+        
+        job_id = scan_job.id
+        
+        logger.info(f"[SSE] Created scan job {job_id} for {url_str} (auth_status={auth_status}, remaining_quota={remaining})")
+
+        run_single_page_scan_sse.delay(job_id, url_str)
+
+        async def event_generator():
+            """Generate SSE events from Redis pub/sub channel"""
+            r = redis.from_url(settings.CELERY_RESULT_BACKEND)
+            pubsub = r.pubsub()
+            channel = f"scan_progress:{job_id}"
+            
+            try:
+                pubsub.subscribe(channel)
+                
+                yield {
+                    "event": "scan_started",
+                    "data": json.dumps({
+                        "job_id": job_id,
+                        "url": url_str,
+                        "progress": 0,
+                        "message": "Scan started. Analyzing page...",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                }
+                
+                for message in pubsub.listen():
+                    if await request.is_disconnected():
+                        logger.info(f"[SSE] Client disconnected from job {job_id}")
+                        break
+                    
+                    if message['type'] == 'message':
+                        try:
+                            event_data = json.loads(message['data'])
+                            event_type = event_data.get("event_type", "update")
+                            
+                            yield {
+                                "event": event_type,
+                                "data": json.dumps(event_data)
+                            }
+                            
+                            logger.info(f"[SSE] Sent {event_type} event to job {job_id}")
+                            
+                            if event_type in ["scan_complete", "scan_error"]:
+                                logger.info(f"[SSE] Closing connection for job {job_id} ({event_type})")
+                                break
+                                
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[SSE] Failed to parse event for job {job_id}: {e}")
+                            continue
+
+                    await asyncio.sleep(0.1)
+                    
+            except Exception as e:
+                logger.error(f"[SSE] Error in event stream for job {job_id}: {e}", exc_info=True)
+                yield {
+                    "event": "scan_error",
+                    "data": json.dumps({
+                        "job_id": job_id,
+                        "progress": 0,
+                        "message": f"Stream error: {str(e)}",
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                }
+            finally:
+                pubsub.unsubscribe(channel)
+                pubsub.close()
+                logger.info(f"[SSE] Cleaned up connection for job {job_id}")
+        
+        return EventSourceResponse(event_generator())
+        
+    except Exception as e:
+        logger.error(f"[SSE] Failed to start scan: {e}", exc_info=True)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start scan: {str(e)}"
+        )
 
 @router.post("/start", response_model=ScanStartResponse)
 async def start_scan(
     data: ScanStartRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(
@@ -76,8 +276,40 @@ async def start_scan(
         if not user_id:
             user_id = data.user_id
 
-        # Generate device_id for anonymous users (needed for both Site and ScanJob)
-        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        # Parse X-Device header from mobile clients
+        device_id_raw, platform = parse_device_header(request)
+        
+        # Require either user_id OR device_id
+        if not user_id and not device_id_raw:
+            device_id_raw = generate_ip_fingerprint(request)
+            platform = "web"
+            logger.warning(f"[SYNC] No user_id or device_id provided for {url_str}, using IP fallback")
+        
+        # Log authentication status
+        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
+        logger.info(f"[SYNC] Scan request: url={url_str}, auth_status={auth_status}, platform={platform}")
+        
+        # Get or create device session
+        user_agent = request.headers.get("user-agent")
+        device_session = await get_or_create_device_session(
+            db=db,
+            device_id=device_id_raw,
+            platform=platform,
+            user_agent=user_agent,
+            user_id=user_id
+        )
+        
+        # Check rate limits
+        is_allowed, remaining, message = await check_rate_limit(db, device_session, user_id, is_ip_fallback)
+        if not is_allowed:
+            logger.warning(f"[SYNC] Rate limit exceeded: {message}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
+            )
+        
+        device_id = device_id_raw if not user_id else None
 
         # Check if Site exists for this user (or anonymous), create if not
         if user_id:
@@ -117,6 +349,9 @@ async def start_scan(
         )
         db.add(scan_job)
         await db.flush()
+        
+        # Increment scan counter
+        await increment_scan_count(db, device_session)
 
         discovery_service = PageDiscoveryService()
         discovered_pages = discovery_service.discover_pages(
@@ -190,6 +425,7 @@ async def start_scan(
 @router.post("/start-async", response_model=ScanStartResponse)
 async def start_scan_async(
     data: ScanStartRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(
         HTTPBearer(auto_error=False))
@@ -231,7 +467,40 @@ async def start_scan_async(
         if not user_id:
             user_id = data.user_id
 
-        device_id = None if user_id else f"anonymous-{hashlib.sha256(url_str.encode()).hexdigest()[:16]}"
+        # Parse X-Device header from mobile clients
+        device_id_raw, platform = parse_device_header(request)
+        
+        # Require either user_id OR device_id
+        if not user_id and not device_id_raw:
+            device_id_raw = generate_ip_fingerprint(request)
+            platform = "web"
+            logger.warning(f"[ASYNC] No user_id or device_id provided for {url_str}, using IP fallback")
+        
+        # Log authentication status
+        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
+        logger.info(f"[ASYNC] Scan request: url={url_str}, auth_status={auth_status}, platform={platform}")
+        
+        # Get or create device session
+        user_agent = request.headers.get("user-agent")
+        device_session = await get_or_create_device_session(
+            db=db,
+            device_id=device_id_raw,
+            platform=platform,
+            user_agent=user_agent,
+            user_id=user_id
+        )
+        
+        # Check rate limits
+        is_allowed, remaining, message = await check_rate_limit(db, device_session, user_id, is_ip_fallback)
+        if not is_allowed:
+            logger.warning(f"[ASYNC] Rate limit exceeded: {message}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
+            )
+        
+        device_id = device_id_raw if not user_id else None
 
         if user_id:
             site_query = select(Site).where(
@@ -265,6 +534,10 @@ async def start_scan_async(
         )
         db.add(scan_job)
         await db.flush()
+        
+        # Increment scan counter
+        await increment_scan_count(db, device_session)
+        
         await db.commit()
         await db.refresh(scan_job)
 
@@ -312,7 +585,7 @@ async def get_scan_history(
         db: Database session
 
     Returns:
-        List of ScanHistoryItem with summary of past scans
+        List of past scans
     """
 
     logger.info(
@@ -320,6 +593,78 @@ async def get_scan_history(
 
     scans = await get_user_scan_history(user_id=current_user.id, db=db, limit=limit)
     return scans
+
+@router.get("/scans", status_code=200)
+async def list_user_scans(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all websites the user has scanned, with the site URL and the date of their latest scan.
+    
+    Returns:
+        List of ScanHistoryItem with summary of past scans
+    """
+    try:
+        latest_scan_subq = (
+            select(
+                ScanJob.site_id,
+                func.max(ScanJob.updated_at).label("last_scan_date")
+            )
+            .where(
+                ScanJob.user_id == current_user.id,
+                ScanJob.updated_at.isnot(None),
+                ScanJob.status == 'completed'
+            )
+            .group_by(ScanJob.site_id)
+        ).subquery()
+
+        latest_scan = aliased(ScanJob)
+
+        stmt = (
+            select(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url.label("site_url"),
+                latest_scan_subq.c.last_scan_date
+            )
+            .join(
+                latest_scan,
+                (latest_scan.site_id == latest_scan_subq.c.site_id) &
+                (latest_scan.updated_at == latest_scan_subq.c.last_scan_date)
+            )
+            .join(
+                ScanPage,
+                ScanPage.scan_job_id == latest_scan.id
+            )
+            .group_by(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url,
+                latest_scan_subq.c.last_scan_date
+            )
+            .order_by(latest_scan_subq.c.last_scan_date.desc())
+        )
+
+        result = await db.execute(stmt)
+        sites = result.all()
+
+        data = [
+            {
+                "site_id": site.site_id,
+                "site_url": site.site_url,
+                "last_scan_date": site.last_scan_date.isoformat() if site.last_scan_date else None
+            }
+            for site in sites
+        ]
+
+        return api_response(data=data)
+
+    except Exception as e:
+        logger.info(f'Error fetching user websites: {str(e)}')
+        return api_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message="Error fetching user websites",
+            data={}
+        )
 
 
 @router.get("/{job_id}/status", response_model=ScanStatusResponse)
@@ -645,3 +990,58 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
+
+@router.delete(
+    "/{job_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an individual scan job",
+    description="""
+    Task 3: Delete a specific scan job record.
+    
+    This endpoint:
+    1. Verifies the scan job belongs to the authenticated user
+    2. Deletes the scan job and its related records (pages, issues) efficiently
+    
+    Path Parameters:
+    - job_id: The unique identifier of the scan job to delete 
+    
+    Returns:
+    - 204: Scan deleted successfully
+    - 404: Scan not found or doesn't belong to the user
+    - 500: Server error during deletion
+    """
+)
+async def delete_scan(
+    job_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete an individual scan record.
+    """
+    try:
+        scan_result = await db.execute(
+            select(ScanJob).where(
+                ScanJob.id == job_id,
+                ScanJob.user_id == current_user.id,
+            )
+        )
+        scan = scan_result.scalar_one_or_none()
+        if not scan:
+            return api_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Scan not found or not owned by user",
+                data={}
+            )
+
+        await db.delete(scan)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error deleting scan {job_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting scan"
+        )

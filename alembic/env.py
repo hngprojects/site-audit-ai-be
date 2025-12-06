@@ -16,6 +16,7 @@ from app.platform.db.base import Base
 from app.features.waitlist.models.waitlist import Waitlist
 from app.features.auth.models.user import User
 from app.features.auth.models.oauth import OAuthAccount
+from app.features.auth.models.user_settings import UserSettings
 from app.features.support.models.support_ticket import SupportTicket
 from app.features.sites.models.site import Site
 from app.features.scan.models.scan_job import ScanJob
@@ -28,6 +29,8 @@ from app.features.referral.models.referral_link import ReferralLink, ReferralCli
 from app.features.referral.models.share_message_template import ShareMessageTemplate
 
 from app.features.notifications.models.notifications import Notification, NotificationSettings
+
+from app.features.admin.models import *
 
 load_dotenv()
 

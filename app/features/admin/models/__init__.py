@@ -1,1 +1,3 @@
-"""Models module"""
+from .admin import Admin
+
+__all__ = ["Admin"]

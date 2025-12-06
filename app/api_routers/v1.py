@@ -1,3 +1,9 @@
+from app.features.leads.routes.lead_route import router as leads_router
+from app.features.admin.routes import router as admin_router
+from app.features.notifications.routes.websocket import router as websocket_notifications_router
+from app.features.notifications.routes.notifications import router as notifications_router
+from app.features.support.routes.contact_us import router as contact_router
+from app.features.support.routes.email_support import router as support_router
 from fastapi import APIRouter
 
 from app.features.auth.routes.auth import router as auth_router
@@ -23,16 +29,8 @@ from app.features.request_form.routes.request_route import router as request_for
 
 api_router = APIRouter()
 
-from app.features.support.routes.email_support import router as support_router
-from app.features.support.routes.contact_us import router as contact_router
-from app.features.notifications.routes.notifications import router as notifications_router
-from app.features.notifications.routes.websocket import router as websocket_notifications_router
 
-
-from app.features.admin.routes import router as admin_router
-from app.features.leads.routes.lead_route import router as leads_router
 # ...
-
 
 
 # Register all feature routes
@@ -62,4 +60,3 @@ api_router.include_router(contact_router)
 api_router.include_router(notifications_router)
 api_router.include_router(admin_router)
 api_router.include_router(websocket_notifications_router)
-
