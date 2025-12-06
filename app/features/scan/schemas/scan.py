@@ -60,6 +60,10 @@ class ScanHistoryItem(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     site: Dict[str, Any]
+    score_overall: Optional[int] = None
+    score_seo: Optional[int] = None
+    score_accessibility: Optional[int] = None
+    score_performance: Optional[int] = None
     
     class Config:
         from_attributes = True
