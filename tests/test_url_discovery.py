@@ -86,35 +86,36 @@ class TestPageDiscoveryService:
 class TestDiscoverUrlsEndpoint:
     """Integration tests for the discover-urls endpoint"""
 
-    @patch('app.features.scan.routes.discovery.PageDiscoveryService')
-    def test_discover_urls_works_without_authentication(self, mock_service_class, client):
+    @patch('app.features.scan.routes.discovery.PageDiscoveryService._fallback_selection')
+    @patch('app.features.scan.routes.discovery.PageDiscoveryService.discover_pages')
+    def test_discover_urls_works_without_authentication(
+        self,
+        mock_discover_pages,
+        mock_fallback_selection,
+        client
+    ):
         """
         Test that endpoint works without authentication (auth is optional)
         and correctly calls the discovery + ranking services.
         """
-        # Create mock instance for the service used in the route
-        mock_service_instance = MagicMock()
-        mock_service_class.return_value = mock_service_instance
-        
         # Mock page discovery - return some URLs
-        mock_service_instance.discover_pages.return_value = [
+        mock_discover_pages.return_value = [
             "https://example.com",
             "https://example.com/about",
             "https://example.com/contact",
         ]
         
-        # Mock LLM ranking / annotation (static method on the class)
-        mock_service_class.rank_and_annotate_pages.return_value = [
+        mock_fallback_selection.return_value = [
             {
                 "title": "Home",
                 "url": "https://example.com",
-                "priority": "High Priority",
+                "priority": "high",
                 "description": "Main landing page",
             },
             {
                 "title": "About",
                 "url": "https://example.com/about",
-                "priority": "Medium Priority",
+                "priority": "medium",
                 "description": "About page",
             },
         ]
@@ -135,18 +136,17 @@ class TestDiscoverUrlsEndpoint:
         assert len(data["data"]["important_urls"]) > 0
 
         # Verify discover_pages was called once with correct arguments
-        mock_service_instance.discover_pages.assert_called_once()
-        called_kwargs = mock_service_instance.discover_pages.call_args.kwargs
+        mock_discover_pages.assert_called_once()
+        called_kwargs = mock_discover_pages.call_args.kwargs
         # Be robust to trailing slash differences
-        assert called_kwargs["max_pages"] == 15
+        assert called_kwargs["max_pages"] == 10
         assert called_kwargs["url"].rstrip("/") == "https://example.com"
 
-        # Verify rank_and_annotate_pages was called once
-        mock_service_class.rank_and_annotate_pages.assert_called_once()
-        rank_call_args, rank_call_kwargs = mock_service_class.rank_and_annotate_pages.call_args
-        assert rank_call_kwargs["base_url"].rstrip("/") == "https://example.com"
-        assert rank_call_kwargs["max_pages"] == 10
-        assert rank_call_kwargs["urls"] == mock_service_instance.discover_pages.return_value
+        # Verify fallback selection was called with discovered pages
+        mock_fallback_selection.assert_called_once()
+        fallback_kwargs = mock_fallback_selection.call_args.kwargs
+        assert fallback_kwargs["pages"] == mock_discover_pages.return_value
+        assert fallback_kwargs["max_pages"] == 10
     
     def test_discover_urls_validates_url_format(self, client):
         """Test that endpoint validates URL format"""
