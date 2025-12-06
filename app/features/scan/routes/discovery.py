@@ -118,7 +118,7 @@ async def discover_important_urls(
         
         logger.info(f"User {user_id or 'anonymous'} initiated URL discovery for {validated_url}")
         
-        # Step 1: Discover up to 15 pages
+        # Step 1: Discover up to 10 pages
         discovery_service = PageDiscoveryService()
         discovered_pages = discovery_service.discover_pages(
             url=validated_url,
@@ -138,7 +138,7 @@ async def discover_important_urls(
         logger.info(f"Discovered {len(discovered_pages)} pages from {validated_url}")
         
         # Step 2: Use LLM to rank and generate metadata for top 10 important pages
-        annotated_pages = PageDiscoveryService._fallback_selection(
+        annotated_pages = PageDiscoveryService.fallback_selection(
             pages=discovered_pages,
             max_pages=10
         )

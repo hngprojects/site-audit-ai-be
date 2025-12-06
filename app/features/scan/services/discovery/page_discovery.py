@@ -77,7 +77,7 @@ class PageDiscoveryService:
             driver.quit()
 
     @staticmethod        
-    def _fallback_selection(pages: List[str], max_pages: int) -> List[Dict[str, str]]:
+    def fallback_selection(pages: List[str], max_pages: int) -> List[Dict[str, str]]:
         """Heuristic fallback when LLM fails. Returns detailed page metadata."""
         priority_keywords = [
             'home', 'index', 'about', 'contact', 'service', 'product',
