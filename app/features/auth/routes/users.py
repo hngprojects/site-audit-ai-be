@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.auth.models.user import User
 from app.features.auth.routes.auth import get_current_user
-from app.features.auth.schemas.auth import UpdateProfileRequest, UserResponse
+from app.features.auth.models.user_settings import UserSettings
+from app.features.auth.schemas.auth import (
+    UpdateProfileRequest, 
+    UserResponse, 
+    UpdateEmailReportPreferenceRequest,
+    EmailReportPreferenceResponse
+)
 from app.platform.db.session import get_db
 from app.platform.response import api_response
 from app.platform.utils.file_upload import delete_profile_picture, save_profile_picture
@@ -132,4 +138,69 @@ async def delete_my_profile_picture(
     return api_response(
         message="Profile picture deleted successfully",
         data=UserResponse.model_validate(updated_user).model_dump(),
+    )
+
+
+
+
+@router.patch(
+    "/me/email-report-preference",
+    response_model=dict,
+    summary="Update email report preference",
+    description="Update the email report cadence (none/daily/weekly/monthly) for the authenticated user.",
+)
+async def update_email_report_preference(
+    payload: UpdateEmailReportPreferenceRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Fetch or create settings row
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        settings = UserSettings(user_id=current_user.id)
+        db.add(settings)
+
+    settings.email_report_preference = payload.preference
+    await db.commit()
+    await db.refresh(settings)
+
+    return api_response(
+        message="Email report preference updated successfully",
+        data=EmailReportPreferenceResponse(
+            user_id=str(current_user.id),
+            preference=settings.email_report_preference,
+        ).model_dump(),
+        status_code=status.HTTP_200_OK,
+    )
+
+
+
+@router.get(
+    "/me/email-report-preference",
+    response_model=dict,
+    summary="Get email report preference",
+    description="Fetch the authenticated user's email report cadence (none/daily/weekly/monthly).",
+)
+async def get_email_report_preference(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Fetch settings; create default if missing
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
+    settings = result.scalar_one_or_none()
+
+    if not settings:
+        settings = UserSettings(user_id=current_user.id)  # defaults to "none"
+        db.add(settings)
+        await db.commit()
+        await db.refresh(settings)
+
+    return api_response(
+        message="Email report preference retrieved successfully",
+        data=EmailReportPreferenceResponse(
+            user_id=str(current_user.id),
+            preference=settings.email_report_preference,
+        ).model_dump(),
     )
