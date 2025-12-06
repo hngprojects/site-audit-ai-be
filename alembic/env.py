@@ -30,6 +30,8 @@ from app.features.referral.models.share_message_template import ShareMessageTemp
 
 from app.features.notifications.models.notifications import Notification, NotificationSettings
 
+from app.features.admin.models import *
+
 load_dotenv()
 
 # Get DATABASE_URL and convert async drivers to sync for Alembic
