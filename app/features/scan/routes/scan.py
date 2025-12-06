@@ -81,19 +81,19 @@ async def start_scan_sse(
         
         device_id_raw, platform = parse_device_header(request)
         
-        # Require either user_id OR device_id
-        if not user_id and not device_id_raw:
-            # Fallback to IP-based identifier for rate limiting
+        # Generate device_id if not provided (for web users)
+        if not device_id_raw:
             device_id_raw = generate_ip_fingerprint(request)
             platform = "web"
-            logger.warning(f"[SSE] No user_id or device_id provided for {url_str}, using IP fallback")
+            if not user_id:
+                logger.warning(f"[SSE] No device_id provided for {url_str}, using IP fallback")
         
         # Log authentication status for error tracking
-        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        is_ip_fallback = device_id_raw.startswith("ip-")
         auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
         logger.info(f"[SSE] Scan request: url={url_str}, auth_status={auth_status}, user_id={user_id}, platform={platform}")
         
-        # Get or create device session for tracking
+        # Get or create device session for tracking (always has device_id_raw now)
         user_agent = request.headers.get("user-agent")
         device_session = await get_or_create_device_session(
             db=db,
@@ -112,7 +112,8 @@ async def start_scan_sse(
                 detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
             )
         
-        device_id = device_id_raw if not user_id else None
+        # For ScanJob: use device_id only for anonymous users
+        device_id_for_scan = device_id_raw if not user_id else None
         
         if user_id:
             site_query = select(Site).where(
@@ -122,7 +123,7 @@ async def start_scan_sse(
         else:
             site_query = select(Site).where(
                 Site.root_url == url_str,
-                Site.device_id == device_id
+                Site.device_id == device_id_for_scan
             )
         
         result = await db.execute(site_query)
@@ -131,7 +132,7 @@ async def start_scan_sse(
         if not site:
             site = Site(
                 user_id=user_id,
-                device_id=device_id,
+                device_id=device_id_for_scan,
                 root_url=url_str,
                 total_scans=0
             )
@@ -140,7 +141,7 @@ async def start_scan_sse(
         
         scan_job = ScanJob(
             user_id=user_id,
-            device_id=device_id,
+            device_id=device_id_for_scan,
             site_id=site.id,
             status=ScanJobStatus.queued,
             queued_at=datetime.utcnow()
@@ -279,18 +280,19 @@ async def start_scan(
         # Parse X-Device header from mobile clients
         device_id_raw, platform = parse_device_header(request)
         
-        # Require either user_id OR device_id
-        if not user_id and not device_id_raw:
+        # Generate device_id if not provided (for web users)
+        if not device_id_raw:
             device_id_raw = generate_ip_fingerprint(request)
             platform = "web"
-            logger.warning(f"[SYNC] No user_id or device_id provided for {url_str}, using IP fallback")
+            if not user_id:
+                logger.warning(f"[SYNC] No device_id provided for {url_str}, using IP fallback")
         
         # Log authentication status
-        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        is_ip_fallback = device_id_raw.startswith("ip-")
         auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
         logger.info(f"[SYNC] Scan request: url={url_str}, auth_status={auth_status}, platform={platform}")
         
-        # Get or create device session
+        # Get or create device session (always has device_id_raw now)
         user_agent = request.headers.get("user-agent")
         device_session = await get_or_create_device_session(
             db=db,
@@ -309,7 +311,8 @@ async def start_scan(
                 detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
             )
         
-        device_id = device_id_raw if not user_id else None
+        # For ScanJob: use device_id only for anonymous users
+        device_id_for_scan = device_id_raw if not user_id else None
 
         # Check if Site exists for this user (or anonymous), create if not
         if user_id:
@@ -322,7 +325,7 @@ async def start_scan(
             # For anonymous users, check for anonymous site by device_id
             site_query = select(Site).where(
                 Site.root_url == url_str,
-                Site.device_id == device_id
+                Site.device_id == device_id_for_scan
             )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
@@ -330,7 +333,7 @@ async def start_scan(
         if not site:
             site = Site(
                 user_id=user_id,
-                device_id=device_id,  # Include device_id for anonymous users
+                device_id=device_id_for_scan,  # Include device_id for anonymous users
                 root_url=url_str,
                 total_scans=0
             )
@@ -341,7 +344,7 @@ async def start_scan(
 
         scan_job = ScanJob(
             user_id=user_id,  # Set if authenticated
-            device_id=device_id,  # Set for anonymous scans
+            device_id=device_id_for_scan,  # Set for anonymous scans
             site_id=site.id,
             status="discovering",
             queued_at=datetime.utcnow(),
@@ -470,18 +473,19 @@ async def start_scan_async(
         # Parse X-Device header from mobile clients
         device_id_raw, platform = parse_device_header(request)
         
-        # Require either user_id OR device_id
-        if not user_id and not device_id_raw:
+        # Generate device_id if not provided (for web users)
+        if not device_id_raw:
             device_id_raw = generate_ip_fingerprint(request)
             platform = "web"
-            logger.warning(f"[ASYNC] No user_id or device_id provided for {url_str}, using IP fallback")
+            if not user_id:
+                logger.warning(f"[ASYNC] No device_id provided for {url_str}, using IP fallback")
         
         # Log authentication status
-        is_ip_fallback = device_id_raw.startswith("ip-") if device_id_raw else False
+        is_ip_fallback = device_id_raw.startswith("ip-")
         auth_status = "authenticated" if user_id else "device_id" if not is_ip_fallback else "ip_fallback"
         logger.info(f"[ASYNC] Scan request: url={url_str}, auth_status={auth_status}, platform={platform}")
         
-        # Get or create device session
+        # Get or create device session (always has device_id_raw now)
         user_agent = request.headers.get("user-agent")
         device_session = await get_or_create_device_session(
             db=db,
@@ -500,7 +504,8 @@ async def start_scan_async(
                 detail=f"Rate limit exceeded. {message}. Please try again tomorrow."
             )
         
-        device_id = device_id_raw if not user_id else None
+        # For ScanJob: use device_id only for anonymous users
+        device_id_for_scan = device_id_raw if not user_id else None
 
         if user_id:
             site_query = select(Site).where(
@@ -510,7 +515,7 @@ async def start_scan_async(
         else:
             site_query = select(Site).where(
                 Site.root_url == url_str,
-                Site.device_id == device_id
+                Site.device_id == device_id_for_scan
             )
         result = await db.execute(site_query)
         site = result.scalar_one_or_none()
@@ -518,7 +523,7 @@ async def start_scan_async(
         if not site:
             site = Site(
                 user_id=user_id,
-                device_id=device_id,
+                device_id=device_id_for_scan,
                 root_url=url_str,
                 total_scans=0
             )
@@ -527,7 +532,7 @@ async def start_scan_async(
 
         scan_job = ScanJob(
             user_id=user_id,
-            device_id=device_id,
+            device_id=device_id_for_scan,
             site_id=site.id,
             status="queued",
             queued_at=datetime.utcnow()
@@ -601,11 +606,14 @@ async def list_user_scans(
 ):
     """
     List all websites the user has scanned, with the site URL and the date of their latest scan.
+    Historical device scans are backfilled with user_id on login.
     
     Returns:
         List of ScanHistoryItem with summary of past scans
     """
     try:
+        # Simple query: just filter by user_id
+        # Historical device scans are backfilled on login
         latest_scan_subq = (
             select(
                 ScanJob.site_id,
@@ -625,7 +633,11 @@ async def list_user_scans(
             select(
                 latest_scan_subq.c.site_id,
                 ScanPage.page_url.label("site_url"),
-                latest_scan_subq.c.last_scan_date
+                latest_scan_subq.c.last_scan_date,
+                latest_scan.score_overall,
+                latest_scan.score_seo,
+                latest_scan.score_accessibility,
+                latest_scan.score_performance
             )
             .join(
                 latest_scan,
@@ -639,7 +651,11 @@ async def list_user_scans(
             .group_by(
                 latest_scan_subq.c.site_id,
                 ScanPage.page_url,
-                latest_scan_subq.c.last_scan_date
+                latest_scan_subq.c.last_scan_date,
+                latest_scan.score_overall,
+                latest_scan.score_seo,
+                latest_scan.score_accessibility,
+                latest_scan.score_performance
             )
             .order_by(latest_scan_subq.c.last_scan_date.desc())
         )
@@ -651,7 +667,11 @@ async def list_user_scans(
             {
                 "site_id": site.site_id,
                 "site_url": site.site_url,
-                "last_scan_date": site.last_scan_date.isoformat() if site.last_scan_date else None
+                "last_scan_date": site.last_scan_date.isoformat() if site.last_scan_date else None,
+                "score_overall": site.score_overall,
+                "score_seo": site.score_seo,
+                "score_accessibility": site.score_accessibility,
+                "score_performance": site.score_performance
             }
             for site in sites
         ]
