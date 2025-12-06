@@ -7,8 +7,9 @@ from sse_starlette.sse import EventSourceResponse
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from fastapi import Depends
+from fastapi import Depends, Response
+from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from datetime import datetime
 from urllib.parse import urlparse
 from typing import List, Optional
@@ -25,7 +26,7 @@ from app.features.scan.schemas.scan import (
     ScanStartResponse,
     ScanStatusResponse,
     ScanResultsResponse,
-    ScanHistoryItem
+    ScanHistoryItem, 
 )
 from app.features.scan.workers.tasks import run_single_page_scan_sse
 from app.features.auth.routes.auth import get_current_user, decode_access_token
@@ -43,6 +44,8 @@ from app.platform.config import settings
 from app.platform.db.session import get_db
 from app.features.scan.services.utils.scan_result_parser import parse_audit_report, generate_summary_message
 from app.features.scan.services.utils.issues_list_parser import parse_detailed_audit_report
+from app.platform.utils.url_validator import validate_url
+
 
 logger = get_logger(__name__)
 
@@ -56,7 +59,15 @@ async def start_scan_sse(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ):
     try:
-        url_str = str(url)
+
+        is_valid, url_str, error_message = validate_url(url)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid URL: {error_message}"
+            )
+        
         parsed = urlparse(url_str)
         
         # Extract user_id from token if authenticated
@@ -574,7 +585,7 @@ async def get_scan_history(
         db: Database session
 
     Returns:
-        List of ScanHistoryItem with summary of past scans
+        List of past scans
     """
 
     logger.info(
@@ -582,6 +593,78 @@ async def get_scan_history(
 
     scans = await get_user_scan_history(user_id=current_user.id, db=db, limit=limit)
     return scans
+
+@router.get("/scans", status_code=200)
+async def list_user_scans(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List all websites the user has scanned, with the site URL and the date of their latest scan.
+    
+    Returns:
+        List of ScanHistoryItem with summary of past scans
+    """
+    try:
+        latest_scan_subq = (
+            select(
+                ScanJob.site_id,
+                func.max(ScanJob.updated_at).label("last_scan_date")
+            )
+            .where(
+                ScanJob.user_id == current_user.id,
+                ScanJob.updated_at.isnot(None),
+                ScanJob.status == 'completed'
+            )
+            .group_by(ScanJob.site_id)
+        ).subquery()
+
+        latest_scan = aliased(ScanJob)
+
+        stmt = (
+            select(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url.label("site_url"),
+                latest_scan_subq.c.last_scan_date
+            )
+            .join(
+                latest_scan,
+                (latest_scan.site_id == latest_scan_subq.c.site_id) &
+                (latest_scan.updated_at == latest_scan_subq.c.last_scan_date)
+            )
+            .join(
+                ScanPage,
+                ScanPage.scan_job_id == latest_scan.id
+            )
+            .group_by(
+                latest_scan_subq.c.site_id,
+                ScanPage.page_url,
+                latest_scan_subq.c.last_scan_date
+            )
+            .order_by(latest_scan_subq.c.last_scan_date.desc())
+        )
+
+        result = await db.execute(stmt)
+        sites = result.all()
+
+        data = [
+            {
+                "site_id": site.site_id,
+                "site_url": site.site_url,
+                "last_scan_date": site.last_scan_date.isoformat() if site.last_scan_date else None
+            }
+            for site in sites
+        ]
+
+        return api_response(data=data)
+
+    except Exception as e:
+        logger.info(f'Error fetching user websites: {str(e)}')
+        return api_response(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            message="Error fetching user websites",
+            data={}
+        )
 
 
 @router.get("/{job_id}/status", response_model=ScanStatusResponse)
@@ -907,3 +990,58 @@ async def stop_scan(
         message="Scan stopped successfully",
         status_code=status.HTTP_200_OK
     )
+
+@router.delete(
+    "/{job_id}", 
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an individual scan job",
+    description="""
+    Task 3: Delete a specific scan job record.
+    
+    This endpoint:
+    1. Verifies the scan job belongs to the authenticated user
+    2. Deletes the scan job and its related records (pages, issues) efficiently
+    
+    Path Parameters:
+    - job_id: The unique identifier of the scan job to delete 
+    
+    Returns:
+    - 204: Scan deleted successfully
+    - 404: Scan not found or doesn't belong to the user
+    - 500: Server error during deletion
+    """
+)
+async def delete_scan(
+    job_id: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete an individual scan record.
+    """
+    try:
+        scan_result = await db.execute(
+            select(ScanJob).where(
+                ScanJob.id == job_id,
+                ScanJob.user_id == current_user.id,
+            )
+        )
+        scan = scan_result.scalar_one_or_none()
+        if not scan:
+            return api_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                message="Scan not found or not owned by user",
+                data={}
+            )
+
+        await db.delete(scan)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error deleting scan {job_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting scan"
+        )

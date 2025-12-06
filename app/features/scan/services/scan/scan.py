@@ -7,6 +7,9 @@ from sqlalchemy import select, update
 from app.features.scan.models.scan_job import ScanJob, ScanJobStatus
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.celery_app import celery_app
+from sqlalchemy import delete
+from typing import Dict, Any
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 

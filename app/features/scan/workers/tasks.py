@@ -233,12 +233,12 @@ def run_single_page_scan_sse(self, job_id: str, url: str):
         
         publish_sse_event(job_id, "scan_started", {
             "progress": 0,
-            "message": "Scan started. Initializing browser..."
+            "message": "Scan started..."
         })
         
         publish_sse_event(job_id, "loading_page", {
             "progress": 20,
-            "message": "Loading webpage with browser..."
+            "message": "Opening your webpage..."
         })
         
         logger.info(f"[{job_id}] Loading page with Selenium...")
