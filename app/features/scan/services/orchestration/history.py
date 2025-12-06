@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 async def get_user_scan_history(user_id: str, db: AsyncSession, limit: int = 50) -> List[ScanHistoryItem]:
     try:
+        # Simple query: just filter by user_id
+        # Historical device scans are backfilled with user_id on login
         query = (
             select(Scan)
             .where(Scan.user_id == user_id)
@@ -36,7 +38,11 @@ async def get_user_scan_history(user_id: str, db: AsyncSession, limit: int = 50)
                     site={
                         "id": scan.site.id if scan.site else None,
                         "root_url": scan.site.root_url if scan.site else "Unknown"
-                    }
+                    },
+                    score_overall=scan.score_overall,
+                    score_seo=scan.score_seo,
+                    score_accessibility=scan.score_accessibility,
+                    score_performance=scan.score_performance
                 )
             )
         

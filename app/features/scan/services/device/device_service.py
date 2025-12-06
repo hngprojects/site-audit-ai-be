@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, date
 from typing import Optional
@@ -37,6 +37,9 @@ async def get_or_create_device_session(
         if user_id and not device_session.user_id:
             device_session.user_id = user_id
             logger.info(f"Linked device {device_hash[:8]}... to user {user_id}")
+            
+            # Backfill user_id on all historical scans from this device
+            await backfill_device_scans(db, device_hash, user_id)
         
         await db.flush()
         return device_session
@@ -56,7 +59,7 @@ async def get_or_create_device_session(
         platform=platform_enum,
         user_agent=user_agent,
         daily_scan_count=0,
-        quota_remaining=15,  # Default quota
+        quota_remaining=20,  # Default quota
         total_scans=0
     )
     db.add(device_session)
@@ -76,9 +79,9 @@ async def check_rate_limit(
     Check if the request should be rate limited.
     
     Rate limits:
-    - Authenticated users (user_id): 15 scans/day
-    - Anonymous mobile (device_id): 5 scans/day
-    - IP fallback: 3 scans/day (stricter for security)
+    - Authenticated users (user_id): 20 scans/day
+    - Anonymous mobile (device_id): 10 scans/day
+    - IP fallback: 10 scans/day
     
     Returns:
         (is_allowed, remaining_quota, message) tuple
@@ -94,13 +97,13 @@ async def check_rate_limit(
     if last_scan_date is None or last_scan_date.date() < today:
         if user_id:
             device_session.daily_scan_count = 0
-            device_session.quota_remaining = 15
+            device_session.quota_remaining = 20
         elif is_ip_fallback:
             device_session.daily_scan_count = 0
-            device_session.quota_remaining = 3
+            device_session.quota_remaining = 10
         else:
             device_session.daily_scan_count = 0
-            device_session.quota_remaining = 5
+            device_session.quota_remaining = 10
         
         await db.flush()
         logger.info(f"Reset daily quota for device {device_session.device_hash[:8]}... "
@@ -135,3 +138,45 @@ async def increment_scan_count(
     
     logger.info(f"Incremented scan count for device {device_session.device_hash[:8]}... "
                f"(daily={device_session.daily_scan_count}, remaining={device_session.quota_remaining})")
+
+
+async def backfill_device_scans(
+    db: AsyncSession,
+    device_hash: str,
+    user_id: str
+) -> int:
+    """
+    Backfill user_id on all historical scans from a device when it gets linked to a user.
+    
+    This ensures that when a user logs in after scanning anonymously, their old scans
+    become visible in their scan history without complex OR queries.
+    
+    Args:
+        db: Database session
+        device_hash: The device hash to backfill
+        user_id: The user ID to assign to historical scans
+        
+    Returns:
+        Number of scans updated
+    """
+    from app.features.scan.models.scan_job import ScanJob
+    
+    # Update all scans where device_id matches and user_id is NULL
+    stmt = (
+        update(ScanJob)
+        .where(
+            ScanJob.device_id == device_hash,
+            ScanJob.user_id == None
+        )
+        .values(user_id=user_id)
+    )
+    
+    result = await db.execute(stmt)
+    updated_count = result.rowcount
+    
+    await db.flush()
+    
+    if updated_count > 0:
+        logger.info(f"Backfilled {updated_count} historical scans for device {device_hash[:8]}... → user {user_id}")
+    
+    return updated_count
