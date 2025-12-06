@@ -112,6 +112,24 @@ class DiscoveryResponse(BaseModel):
         }
 
 
+class StructuredPageInfo(BaseModel):
+    """Structured information about a discovered page."""
+    title: str
+    url: str
+    description: str
+    priority: str  # "high", "medium", "low"
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Homepage",
+                "url": "https://example.com",
+                "description": "Main landing page with key business information and navigation",
+                "priority": "high"
+            }
+        }
+
+
 # ============================================================================
 # Phase 2: Selection Schemas
 # ============================================================================

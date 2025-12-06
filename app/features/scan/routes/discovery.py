@@ -32,15 +32,17 @@ class DiscoverUrlsRequest(BaseModel):
 
 class DiscoveredUrl(BaseModel):
     """Individual discovered URL with metadata"""
+    title: str
     url: str
-    rank: int  # 1-10, with 1 being most important
+    description: str
+    priority: str  # "high", "medium", "low"
 
 
 class DiscoverUrlsResponse(BaseModel):
     """Response with top 10 important URLs"""
     base_url: str
     discovered_count: int  # Total discovered (max 15)
-    important_urls: List[DiscoveredUrl]  # Top 10 ranked by LLM
+    important_urls: List[DiscoveredUrl]  # Top 10 with metadata
     message: str
 
 
@@ -98,20 +100,23 @@ async def discover_important_urls(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Discover and return top 10 most important URLs from a website.
+    Discover and return top 10 most important URLs from a website with metadata.
     
     **Process:**
     1. Validates the input URL
     2. Discovers up to 15 pages using lightweight Selenium crawler
     3. Ensures all URLs share the same base domain
-    4. Uses LLM (OpenRouter) to rank pages by importance
-    5. Returns top 10 most important URLs
+    4. Uses LLM (OpenRouter) to analyze and rank pages by importance
+    5. Returns top 10 URLs with title, description, and priority level
     
     **Authentication:** Required - only logged-in users can access
     
     **Returns:**
-    - List of top 10 URLs ranked by importance
-    - Empty array if no URLs found
+    - List of top 10 URLs with:
+      - title: Human-readable page name
+      - url: Full page URL
+      - description: Why this page is important for audit
+      - priority: "high", "medium", or "low"
     
     **Example Response:**
     ```json
@@ -123,8 +128,18 @@ async def discover_important_urls(
             "base_url": "https://example.com",
             "discovered_count": 15,
             "important_urls": [
-                {"url": "https://example.com", "rank": 1},
-                {"url": "https://example.com/about", "rank": 2}
+                {
+                    "title": "Homepage",
+                    "url": "https://example.com",
+                    "description": "Main landing page with key business information",
+                    "priority": "high"
+                },
+                {
+                    "title": "About Us",
+                    "url": "https://example.com/about",
+                    "description": "Company background and mission statement",
+                    "priority": "high"
+                }
             ],
             "message": "Successfully discovered 10 important URLs"
         }
@@ -164,19 +179,19 @@ async def discover_important_urls(
         
         logger.info(f"Discovered {len(discovered_pages)} pages from {validated_url}")
         
-        # Step 2: Use LLM to select top 10 important pages
+        # Step 2: Use LLM to select top 10 with structured metadata
         selector_service = PageSelectorService()
-        selected_urls = selector_service.filter_important_pages(
+        selected_urls_with_metadata = selector_service.filter_important_pages(
             pages=discovered_pages,
             top_n=10,
             referer=validated_url,
             site_title=f"URL Discovery for {validated_url}"
         )
         
-        # Step 3: Format response with ranking
+        # Step 3: Format response
         important_urls = [
-            DiscoveredUrl(url=url, rank=idx + 1) 
-            for idx, url in enumerate(selected_urls)
+            DiscoveredUrl(**item) 
+            for item in selected_urls_with_metadata
         ]
         
         logger.info(f"Selected {len(important_urls)} important URLs for {validated_url}")

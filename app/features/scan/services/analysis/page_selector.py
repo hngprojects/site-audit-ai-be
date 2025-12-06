@@ -1,7 +1,8 @@
 import os
 import re
 import logging
-from typing import List
+import json
+from typing import List, Dict, Any
 from openai import OpenAI
 
 from app.platform.config import settings
@@ -32,9 +33,9 @@ class PageSelectorService:
         top_n: int = 5,
         referer: str = "",
         site_title: str = ""
-    ) -> List[str]:
+    ) -> List[Dict[str, Any]]:
         """
-        Select important pages from a list using LLM.
+        Select important pages from a list using LLM with structured metadata.
         Args:
             pages: List of discovered page URLs
             top_n: Maximum number of pages to select
@@ -42,7 +43,7 @@ class PageSelectorService:
             site_title: Site title for API call
             
         Returns:
-            List of selected important page URLs
+            List of dicts with title, url, description, priority
         """
         if not pages:
             logger.info("No pages provided for selection")
@@ -51,10 +52,10 @@ class PageSelectorService:
         # Cap at actual available pages
         actual_max = min(top_n, len(pages))
         
-        # If very few pages, skip LLM call and return all
+        # If very few pages, skip LLM call and return all with default metadata
         if len(pages) <= 7:
             logger.info(f"Only {len(pages)} pages found, returning all without LLM")
-            return pages
+            return PageSelectorService._create_default_selection(pages)
         
         try:
             selected = PageSelectorService._select_via_llm(
@@ -65,7 +66,7 @@ class PageSelectorService:
             )
             
             # Validate and filter results
-            selected = PageSelectorService._validate_selection(
+            selected = PageSelectorService._validate_structured_selection(
                 selected=selected,
                 original_pages=pages,
                 max_pages=actual_max
@@ -76,7 +77,7 @@ class PageSelectorService:
             
         except Exception as e:
             logger.error(f"LLM selection failed: {e}, falling back to heuristic")
-            return PageSelectorService._fallback_selection(pages, actual_max)
+            return PageSelectorService._fallback_structured_selection(pages, actual_max)
     
     @staticmethod
     def _select_via_llm(
@@ -84,8 +85,8 @@ class PageSelectorService:
         max_pages: int,
         referer: str,
         site_title: str
-    ) -> List[str]:
-        """Call LLM to select important pages."""
+    ) -> List[Dict[str, Any]]:
+        """Call LLM to select important pages with structured output."""
         # Prepare prompt
         prompt_template = load_prompt_template()
         prompt = prompt_template.format(
@@ -116,55 +117,84 @@ class PageSelectorService:
         
         text = completion.choices[0].message.content or ""
         
-        # Extract URLs from response using regex (more robust than line splitting)
-        found_urls = PageSelectorService.URL_PATTERN.findall(text)
-        
-        # Also try line-by-line for cleaner responses
-        for line in text.splitlines():
-            line = line.strip()
-            # Remove common prefixes like "1.", "- ", "* "
-            line = re.sub(r'^[\d]+[.\)]\s*', '', line)
-            line = re.sub(r'^[-*•]\s*', '', line)
-            line = line.strip()
+        # Try to parse as JSON first
+        try:
+            # Clean markdown code blocks if present
+            cleaned_text = text.strip()
+            if cleaned_text.startswith('```'):
+                cleaned_text = '\n'.join(cleaned_text.split('\n')[1:-1])
             
-            if line.startswith('http') and line not in found_urls:
-                found_urls.append(line)
+            result = json.loads(cleaned_text)
+            
+            # Validate structure
+            if isinstance(result, list):
+                return result
+            else:
+                logger.warning("LLM returned non-list JSON, falling back to parsing")
+        except json.JSONDecodeError:
+            logger.warning("LLM response not valid JSON, attempting to parse")
         
-        return found_urls
+        # Fallback: try to extract URLs and create basic structure
+        found_urls = PageSelectorService.URL_PATTERN.findall(text)
+        return [
+            {
+                "title": PageSelectorService._extract_title_from_url(url),
+                "url": url,
+                "description": "Selected for comprehensive audit",
+                "priority": "medium"
+            }
+            for url in found_urls
+        ]
     
     @staticmethod
-    def _validate_selection(
-        selected: List[str],
+    def _validate_structured_selection(
+        selected: List[Dict[str, Any]],
         original_pages: List[str],
         max_pages: int
-    ) -> List[str]:
-        """Validate and clean up LLM selection."""
-        # Normalize original pages for comparison
+    ) -> List[Dict[str, Any]]:
+        """Validate and clean up LLM structured selection."""
         original_normalized = {url.rstrip('/').lower() for url in original_pages}
         original_map = {url.rstrip('/').lower(): url for url in original_pages}
         
         validated = []
         seen = set()
         
-        for url in selected:
-            # Clean the URL
-            url = url.strip().rstrip('/')
+        for item in selected:
+            if not isinstance(item, dict):
+                continue
+                
+            url = item.get('url', '').strip().rstrip('/')
             url_lower = url.lower()
             
-            # Check if it's from original list (or close match)
+            # Check if URL is from original list
             if url_lower in original_normalized and url_lower not in seen:
-                validated.append(original_map[url_lower])
+                validated.append({
+                    "title": item.get('title', PageSelectorService._extract_title_from_url(url)),
+                    "url": original_map[url_lower],
+                    "description": item.get('description', 'Selected for audit'),
+                    "priority": item.get('priority', 'medium')
+                })
                 seen.add(url_lower)
-            elif url in original_pages and url.rstrip('/').lower() not in seen:
-                validated.append(url)
-                seen.add(url.rstrip('/').lower())
         
         # Respect max limit
         return validated[:max_pages]
     
     @staticmethod
-    def _fallback_selection(pages: List[str], max_pages: int) -> List[str]:
-        """Heuristic fallback when LLM fails."""
+    def _create_default_selection(pages: List[str]) -> List[Dict[str, Any]]:
+        """Create default selection for small page lists."""
+        return [
+            {
+                "title": PageSelectorService._extract_title_from_url(url),
+                "url": url,
+                "description": "Selected for comprehensive audit",
+                "priority": "high" if i == 0 else "medium"
+            }
+            for i, url in enumerate(pages)
+        ]
+    
+    @staticmethod
+    def _fallback_structured_selection(pages: List[str], max_pages: int) -> List[Dict[str, Any]]:
+        """Heuristic fallback with structured output."""
         # Priority keywords for important pages
         priority_keywords = [
             'home', 'index', 'about', 'contact', 'service', 'product',
@@ -182,20 +212,36 @@ class PageSelectorService:
         for url in pages:
             url_lower = url.lower()
             
-            # Skip if contains skip keywords
             if any(kw in url_lower for kw in skip_keywords):
                 continue
             
-            # Score based on priority keywords
             score = sum(1 for kw in priority_keywords if kw in url_lower)
             
-            # Boost root/homepage
             if url.rstrip('/').count('/') <= 3:
                 score += 2
             
             scored.append((score, url))
         
-        # Sort by score descending
         scored.sort(key=lambda x: x[0], reverse=True)
         
-        return [url for _, url in scored[:max_pages]]
+        return [
+            {
+                "title": PageSelectorService._extract_title_from_url(url),
+                "url": url,
+                "description": "Selected based on URL importance heuristics",
+                "priority": "high" if score >= 3 else ("medium" if score >= 1 else "low")
+            }
+            for score, url in scored[:max_pages]
+        ]
+    
+    @staticmethod
+    def _extract_title_from_url(url: str) -> str:
+        """Extract a human-readable title from URL."""
+        from urllib.parse import urlparse
+        
+        parsed = urlparse(url)
+        path = parsed.path.strip('/').split('/')[-1] or 'Homepage'
+        
+        # Clean up the path
+        title = path.replace('-', ' ').replace('_', ' ').title()
+        return title if title else 'Homepage'

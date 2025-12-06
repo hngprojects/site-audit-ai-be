@@ -10,7 +10,16 @@ INPUT URLs:
 {urls}
 
 OUTPUT INSTRUCTIONS:
-- Return ONLY the selected URLs
-- One URL per line
-- No numbering, no explanations, no markdown formatting
-- Start with the most important page first
+- Return ONLY valid JSON array
+- Each object must have: title, url, description, priority
+- Priority levels: "high", "medium", "low"
+- Title: Short page name (e.g., "Homepage", "About Us", "Contact")
+- Description: One sentence describing what the page is
+- Start with highest priority pages first
+
+EXAMPLE FORMAT:
+[
+  {{"title": "Homepage", "url": "https://example.com", "description": "Main landing page with key business information and navigation", "priority": "high"}},
+  {{"title": "About Us", "url": "https://example.com/about", "description": "Company background and mission statement page", "priority": "high"}},
+  {{"title": "Services", "url": "https://example.com/services", "description": "Core service offerings and features", "priority": "medium"}}
+]
