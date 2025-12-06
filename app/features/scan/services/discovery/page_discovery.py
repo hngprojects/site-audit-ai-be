@@ -104,6 +104,7 @@ class PageDiscoveryService:
             parts = url.rstrip('/').split('/')
             slug = parts[-1] if parts[-1] else parts[-2]
             title = slug.replace('-', ' ').replace('_', ' ').title()
+            title = title.split('?')[0] 
             # Choose description
             if matched_keywords:
                 desc_source = matched_keywords[0]
