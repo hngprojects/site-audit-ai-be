@@ -2,6 +2,7 @@ import re
 import uuid
 from datetime import datetime
 from typing import Optional
+import enum
 
 from pydantic import BaseModel, EmailStr, Field, field_serializer, field_validator
 
@@ -162,3 +163,18 @@ class VerifyEmailRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
+
+
+
+class EmailReportPreference(str, enum.Enum):
+    none = "none"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
+
+class UpdateEmailReportPreferenceRequest(BaseModel):
+    preference: EmailReportPreference
+
+class EmailReportPreferenceResponse(BaseModel):
+    user_id: str
+    preference: EmailReportPreference
