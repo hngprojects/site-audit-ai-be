@@ -1,17 +1,170 @@
 from fastapi import APIRouter, status, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import asyncio
+import json
+import time as time_module
 
 from app.features.scan.schemas.scan import ScrapingRequest, ScrapingResponse
 from app.features.scan.services.extraction.extractor_service import ExtractorService
 from app.features.scan.services.scraping.scraping_service import ScrapingService
 from app.features.scan.models.scan_page import ScanPage
 from app.platform.response import api_response
+from selenium.common.exceptions import TimeoutException
 
 from app.platform.db.session import get_db
 import hashlib
 
 router = APIRouter(prefix="/scan/scraping", tags=["scan-scraping"])
+
+
+async def scraping_progress_generator(url: str):
+    """Generator that yields SSE events with real-time scraping progress"""
+    driver = None
+    
+    try:
+        # Send initial status
+        yield f"data: {json.dumps({'status': 'starting', 'message': 'Initializing browser...'})}\n\n"
+        await asyncio.sleep(0.1)
+        
+        # Build driver
+        yield f"data: {json.dumps({'status': 'loading', 'message': 'Loading page...', 'elapsed': 0})}\n\n"
+        
+        # Start loading in a thread since Selenium is blocking
+        import threading
+        from queue import Queue
+        
+        result_queue = Queue()
+        error_queue = Queue()
+        start_time = time_module.time()
+        
+        def load_page_thread():
+            try:
+                driver_local = ScrapingService.load_page(str(url), timeout=30)
+                result_queue.put(driver_local)
+            except Exception as e:
+                error_queue.put(e)
+        
+        thread = threading.Thread(target=load_page_thread)
+        thread.start()
+        
+        # Send progress updates while loading
+        while thread.is_alive():
+            elapsed = time_module.time() - start_time
+            
+            # Progressive messages based on elapsed time
+            if elapsed < 3.0:
+                # Still reasonable, just show progress
+                message = "Loading page..."
+            elif elapsed < 5.0:
+                # Starting to take longer than expected
+                message = "Page is taking longer than expected..."
+            elif elapsed < 10.0:
+                # Definitely slow
+                message = "Warning: Page is loading slowly..."
+            else:
+                # Very slow
+                message = "Critical: Page is taking very long to load..."
+            
+            yield f"data: {json.dumps({'status': 'loading', 'message': message, 'elapsed': round(elapsed, 2)})}\n\n"
+            await asyncio.sleep(0.5)
+        
+        thread.join()
+        
+        # Check for errors
+        if not error_queue.empty():
+            error = error_queue.get()
+            if isinstance(error, TimeoutException):
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Page took too long to load (timeout)', 'error': str(error)})}\n\n"
+            else:
+                yield f"data: {json.dumps({'status': 'error', 'message': 'Failed to load page', 'error': str(error)})}\n\n"
+            return
+        
+        driver = result_queue.get()
+        load_time = time_module.time() - start_time
+        
+        # Calculate performance now that we know the final load time
+        loading_status = getattr(driver, "performance_metrics", {}).get("loading_status", None)
+        performance_score = ScrapingService.calculate_performance_score(load_time)
+        performance_comment = ScrapingService.get_performance_comment(performance_score, loading_status)
+        
+        # Page loaded successfully - NOW we assess performance
+        yield f"data: {json.dumps({'status': 'loaded', 'message': performance_comment, 'load_time': round(load_time, 2), 'score': performance_score})}\n\n"
+        await asyncio.sleep(0.1)
+        
+        # Extract data
+        yield f"data: {json.dumps({'status': 'extracting', 'message': 'Extracting page data...'})}\n\n"
+        
+        headings = ExtractorService.extract_headings(driver)
+        images = ExtractorService.extract_images(driver)
+        issues = ExtractorService.extract_accessibility(driver, headings=headings, images=images)
+        text_content = ExtractorService.extract_text_content(driver)
+        metadata = ExtractorService.extract_metadata(driver)
+        
+        # Performance Metrics
+        loading_status = getattr(driver, "performance_metrics", {}).get("loading_status", None)
+        performance_score = ScrapingService.calculate_performance_score(load_time)
+        performance_comment = ScrapingService.get_performance_comment(performance_score, loading_status)
+        
+        response_data = {
+            "heading_data": headings,
+            "images_data": images,
+            "issues_data": issues,
+            "text_content_data": text_content,
+            "metadata_data": metadata,
+            "performance_data": {
+                "load_time": load_time,
+                "score": performance_score,
+                "comment": performance_comment
+            }
+        }
+        
+        # Send completion with data
+        yield f"data: {json.dumps({'status': 'complete', 'message': 'Scraping completed!', 'data': response_data})}\n\n"
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+
+
+@router.get("/stream")
+async def scrape_page_stream(url: str):
+    """
+    Stream real-time scraping progress using Server-Sent Events (SSE).
+    
+    Returns a stream of JSON events with status updates:
+    - starting: Browser initialization
+    - loading: Page is loading (with elapsed time)
+    - slow/very_slow: Page is taking longer than expected
+    - loaded: Page loaded successfully
+    - extracting: Extracting data from page
+    - complete: Scraping finished (includes full data)
+    - error: An error occurred
+    
+    Example usage:
+    ```javascript
+    const eventSource = new EventSource('/api/v1/scan/scraping/stream?url=https://example.com');
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log(data.status, data.message);
+    };
+    ```
+    """
+    return StreamingResponse(
+        scraping_progress_generator(url),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @router.get("/extract-test")
@@ -97,7 +250,7 @@ async def scrape_pages(
 
         try:
             page_url = str(url)
-            driver = ScrapingService.load_page(page_url)
+            driver = ScrapingService.load_page(page_url, timeout=30)  # Increased timeout to 30s
 
             # Extractor Engines
             headings = ExtractorService.extract_headings(driver)
@@ -106,16 +259,35 @@ async def scrape_pages(
             text_content = ExtractorService.extract_text_content(driver)
             metadata = ExtractorService.extract_metadata(driver)
 
+            # Performance Metrics
+            load_time = getattr(driver, "performance_metrics", {}).get("load_time", 0.0)
+            loading_status = getattr(driver, "performance_metrics", {}).get("loading_status", None)
+            performance_score = ScrapingService.calculate_performance_score(load_time)
+            performance_comment = ScrapingService.get_performance_comment(performance_score, loading_status)
+
             response_data = {
                 "heading_data" : headings,
                 "images_data" : images,
                 "issues_data" : issues,
                 "text_content_data" : text_content,
                 "metadata_data" : metadata,
+                "performance_data": {
+                    "load_time": load_time,
+                    "score": performance_score,
+                    "comment": performance_comment
+                }
             }
             
             return api_response(data=response_data)
+        except TimeoutException as e:
+            return api_response(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                message=f"Page took too long to load (timeout after 30s). The page may be slow or unresponsive.",
+                data={"url": str(url)}
+            )
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return api_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message=str(e),

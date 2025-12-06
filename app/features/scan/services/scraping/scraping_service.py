@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium import webdriver
@@ -29,7 +30,7 @@ class ScrapingService:
 
 
     @staticmethod
-    def load_page(url: str, timeout: int = 10) -> webdriver.Chrome:
+    def load_page(url: str, timeout: int = 30) -> webdriver.Chrome:
         """
         Load a page and return the WebDriver instance.
         Caller is responsible for calling driver.quit().
@@ -37,13 +38,81 @@ class ScrapingService:
         driver = ScrapingService.build_driver()
         driver.set_page_load_timeout(timeout)
         try:
+            start_time = time.time()
             driver.get(url)
+            end_time = time.time()
+            
+            load_time = end_time - start_time
+            
+            # Determine loading status based on intermediate thresholds
+            if load_time < 1.0:
+                loading_status = "fast"
+            elif load_time < 3.0:
+                loading_status = "normal"
+            elif load_time < 5.0:
+                loading_status = "slow"
+            else:
+                loading_status = "very_slow"
+            
+            # Attach performance metrics to driver
+            driver.performance_metrics = {
+                "load_time": load_time,
+                "loading_status": loading_status
+            }
+            
             return driver  # caller is responsible for driver.quit()
         except (TimeoutException, WebDriverException):
             driver.quit()
             raise
     
     
+    @staticmethod
+    def calculate_performance_score(load_time: float) -> int:
+        """
+        Calculate performance score (0-100) based on load time.
+        < 0.5s = 100
+        > 10s = 0
+        Linear interpolation in between.
+        """
+        if load_time <= 0.5:
+            return 100
+        if load_time >= 10.0:
+            return 0
+            
+        # Linear interpolation between 0.5s (100) and 10s (0)
+        # Slope = (0 - 100) / (10 - 0.5) = -100 / 9.5
+        slope = -100 / 9.5
+        score = 100 + slope * (load_time - 0.5)
+        return int(max(0, min(100, score)))
+
+
+    @staticmethod
+    def get_performance_comment(score: int, loading_status: str = None) -> str:
+        """Return a text comment based on the performance score and loading status."""
+        # If we have loading status, provide process-aware feedback
+        if loading_status:
+            if loading_status == "fast":
+                return "Excellent! The page loaded very quickly."
+            elif loading_status == "normal":
+                return "Good. The page loaded at an acceptable speed."
+            elif loading_status == "slow":
+                return "The page took longer than expected to load. Consider optimization."
+            elif loading_status == "very_slow":
+                return "Warning: The page is loading very slowly. This may impact user experience."
+        
+        # Fallback to score-based comments
+        if score >= 90:
+            return "Excellent! The page loads very quickly."
+        elif score >= 75:
+            return "Good. The page load time is acceptable."
+        elif score >= 50:
+            return "Fair. The page could load faster."
+        elif score >= 25:
+            return "Poor. The page is slow to load."
+        else:
+            return "Critical. The page takes too long to load."
+
+
     @staticmethod
     def scrape_page(url: str, timeout: int = 5) -> Dict[str, Any]:
         """
@@ -66,12 +135,21 @@ class ScrapingService:
             page_title = driver.title or None
             current_url = driver.current_url
             
+            # Get performance metrics
+            load_time = getattr(driver, "performance_metrics", {}).get("load_time", 0.0)
+            loading_status = getattr(driver, "performance_metrics", {}).get("loading_status", None)
+            performance_score = ScrapingService.calculate_performance_score(load_time)
+            performance_comment = ScrapingService.get_performance_comment(performance_score, loading_status)
+            
             return {
                 "url": url,
                 "current_url": current_url,  # Final URL after redirects
                 "html": html_content,
                 "page_title": page_title,
                 "content_length": len(html_content),
+                "load_time": load_time,
+                "performance_score": performance_score,
+                "performance_comment": performance_comment,
                 "success": True
             }
             
