@@ -14,7 +14,7 @@ OUTPUT INSTRUCTIONS:
 - Each object must have: title, url, description, priority
 - Priority levels: "high", "medium", "low"
 - Title: Short page name (e.g., "Homepage", "About Us", "Contact")
-- Description: One sentence explaining why this page is important for the audit
+- Description: One sentence describing what the page is
 - Start with highest priority pages first
 
 EXAMPLE FORMAT:
