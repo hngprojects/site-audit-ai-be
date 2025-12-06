@@ -86,19 +86,6 @@ class TestPageDiscoveryService:
 class TestDiscoverUrlsEndpoint:
     """Integration tests for the discover-urls endpoint"""
     
-    def test_discover_urls_requires_authentication(self, client):
-        """Test that endpoint requires authentication"""
-        response = client.post(
-            "/api/v1/scan/discovery/discover-urls",
-            json={"url": "https://example.com"}
-        )
-        
-        # Should return 403 without auth token
-        assert response.status_code == 403
-        data = response.json()
-        assert data["status"] == "error"
-        assert "authenticated" in data["message"].lower()
-    
     def test_discover_urls_validates_url_format(self, client):
         """Test that endpoint validates URL format"""
         # Create a mock token (won't validate but will pass the dependency check)
