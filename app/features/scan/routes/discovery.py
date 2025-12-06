@@ -150,7 +150,6 @@ async def discover_important_urls(
         
         logger.info(f"Selected {len(important_urls)} important URLs for {validated_url}")
         return api_response(
-            message=f"Successfully discovered {len(important_urls)} important URLs",
             data={
                 "base_url": validated_url,
                 "discovered_count": len(discovered_pages),
