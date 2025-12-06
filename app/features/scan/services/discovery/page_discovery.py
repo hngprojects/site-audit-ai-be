@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 class PageDiscoveryService:
     
     @staticmethod
-    def discover_pages(url: str, max_pages: int = 15) -> List[str]:
+    def discover_pages(url: str, max_pages: int = 10) -> List[str]:
         """
         Discover pages from a website using Selenium.
         
         Args:
             url: Base URL to start discovery from
-            max_pages: Maximum number of pages to discover (default: 15)
+            max_pages: Maximum number of pages to discover (default: 10)
             
         Returns:
             List of discovered URLs (all from same base domain)
@@ -75,6 +75,58 @@ class PageDiscoveryService:
             return pages
         finally:
             driver.quit()
+
+    @staticmethod        
+    def fallback_selection(pages: List[str], max_pages: int) -> List[Dict[str, str]]:
+        """Heuristic fallback when LLM fails. Returns detailed page metadata."""
+        priority_keywords = [
+            'home', 'index', 'about', 'contact', 'service', 'product',
+            'pricing', 'faq', 'blog', 'privacy', 'terms', 'team',
+            'portfolio', 'work', 'case', 'testimonial', 'feature'
+        ]
+        skip_keywords = [
+            'login', 'logout', 'signup', 'register', 'cart', 'checkout',
+            'search', 'page=', 'sort=', 'filter=', 'session', 'token'
+        ]
+        scored = []
+        for url in pages:
+            url_lower = url.lower()
+            # Skip URLs with skip keywords
+            if any(kw in url_lower for kw in skip_keywords):
+                continue
+            # Score based on keyword matches
+            matched_keywords = [kw for kw in priority_keywords if kw in url_lower]
+            score = len(matched_keywords)
+            # Boost if likely homepage or top-level page
+            if url.rstrip('/').count('/') <= 3:
+                score += 2
+            # Extract title from last part of URL
+            parts = url.rstrip('/').split('/')
+            slug = parts[-1] if parts[-1] else parts[-2]
+            title = slug.replace('-', ' ').replace('_', ' ').title()
+            title = title.split('?')[0] 
+            # Choose description
+            if matched_keywords:
+                desc_source = matched_keywords[0]
+            else:
+                desc_source = slug or "general site content"
+            description = f"A page related to {desc_source.replace('-', ' ').replace('_', ' ')}."
+            # Determine priority label
+            priority = "high" if matched_keywords else "low"
+            scored.append({
+                "url": url,
+                "title": title or "Untitled Page",
+                "description": description,
+                "priority": priority,
+                "score": score
+            })
+        # Sort by score descending
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        # Limit and drop score field before returning
+        return [
+            {k: v for k, v in item.items() if k != "score"}
+            for item in scored[:max_pages]
+        ]
     
     @staticmethod
     def _is_same_domain(url: str, base_domain: str) -> bool:

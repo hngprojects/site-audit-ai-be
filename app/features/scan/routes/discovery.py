@@ -42,56 +42,9 @@ class DiscoveredUrl(BaseModel):
 class DiscoverUrlsResponse(BaseModel):
     """Response with top 10 important URLs"""
     base_url: str
-    discovered_count: int  # Total discovered (max 15)
+    discovered_count: int  # Total discovered (max 10)
     important_urls: List[DiscoveredUrl]  # Top 10 ranked by LLM
     message: str
-
-
-@router.post("", response_model=DiscoveryResponse)
-async def discover_pages(
-    data: DiscoveryRequest,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Phase 1: Discover all pages from a website using Selenium.
-    
-    This endpoint:
-    - Crawls the website using headless Chrome
-    - Returns list of discovered URLs
-    
-    Later-> Called by: Discovery worker after scan is queued
-    
-    Args:
-        data: DiscoveryRequest with url and optional job_id
-        db: Database session
-        
-    Returns:
-        DiscoveryResponse with discovered pages
-    """
-    try:
-        # Run discovery
-        pages = PageDiscoveryService.discover_pages(str(data.url))
-        
-        # TODO: If job_id provided, update ScanJob record
-        # - Set status = 'discovered'
-        # - Set discovered_pages_count = len(pages)
-        # - Queue next phase (selection)
-        
-        return api_response(
-            data={
-                "pages": pages,
-                "count": len(pages),
-                "job_id": data.job_id
-            }
-        )
-        
-    except Exception as e:
-        # TODO: If job_id provided, mark discovery_status = 'failed'
-        return api_response(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            message=f"Discovery failed: {str(e)}",
-            data={}
-        )
 
 
 @router.post("/discover-urls", response_model=DiscoverUrlsResponse)
@@ -105,7 +58,7 @@ async def discover_important_urls(
     
     **Process:**
     1. Validates the input URL
-    2. Discovers up to 15 pages using lightweight Selenium crawler
+    2. Discovers up to 10 pages using lightweight Selenium crawler
     3. Ensures all URLs share the same base domain
     4. Uses LLM (OpenRouter) to rank pages by importance
     5. Returns top 10 most important URLs
@@ -146,7 +99,6 @@ async def discover_important_urls(
     try:
         url_str = str(data.url)
         
-        # Validate URL
         is_valid, validated_url, error_message = validate_url(url_str)
         if not is_valid:
             raise HTTPException(
@@ -165,11 +117,11 @@ async def discover_important_urls(
         
         logger.info(f"User {user_id or 'anonymous'} initiated URL discovery for {validated_url}")
         
-        # Step 1: Discover up to 15 pages
+        # Step 1: Discover up to 10 pages
         discovery_service = PageDiscoveryService()
         discovered_pages = discovery_service.discover_pages(
             url=validated_url,
-            max_pages=15
+            max_pages=10
         )
         
         if not discovered_pages:
@@ -181,14 +133,12 @@ async def discover_important_urls(
                     "important_urls": [],
                     "message": "No URLs found for the given website"
                 }
-            )
-        
+            )   
         logger.info(f"Discovered {len(discovered_pages)} pages from {validated_url}")
         
         # Step 2: Use LLM to rank and generate metadata for top 10 important pages
-        annotated_pages = PageDiscoveryService.rank_and_annotate_pages(
-            base_url=validated_url,
-            urls=discovered_pages,
+        annotated_pages = PageDiscoveryService.fallback_selection(
+            pages=discovered_pages,
             max_pages=10
         )
         
@@ -198,9 +148,7 @@ async def discover_important_urls(
         ]
         
         logger.info(f"Selected {len(important_urls)} important URLs for {validated_url}")
-        
         return api_response(
-            message=f"Successfully discovered {len(important_urls)} important URLs",
             data={
                 "base_url": validated_url,
                 "discovered_count": len(discovered_pages),
