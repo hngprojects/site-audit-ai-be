@@ -38,11 +38,12 @@ def check_and_trigger_periodic_scans(self):
     db = get_sync_db()
     
     try:
-        # Query sites that need scanning
-        now = datetime.utcnow()
+        # Query sites that need scanning (check by date, not datetime)
+        from datetime import date
+        today = date.today()
         query = select(Site).where(
             Site.scan_frequency_enabled == True,
-            Site.next_scheduled_scan <= now,
+            Site.next_scheduled_scan <= today,
             Site.scan_frequency != ScanFrequency.disabled
         )
         
@@ -66,20 +67,20 @@ def check_and_trigger_periodic_scans(self):
                     device_id=device_id,
                     site_id=site.id,
                     status="queued",
-                    queued_at=now
+                    queued_at=datetime.utcnow()
                 )
                 db.add(scan_job)
                 db.flush()  # Get the job ID
                 
-                # Update next_scheduled_scan based on frequency
+                # Update next_scheduled_scan based on frequency (use date arithmetic)
                 if site.scan_frequency == ScanFrequency.weekly:
-                    site.next_scheduled_scan = now + timedelta(days=7)
+                    site.next_scheduled_scan = today + timedelta(days=7)
                 elif site.scan_frequency == ScanFrequency.monthly:
-                    site.next_scheduled_scan = now + timedelta(days=30)
+                    site.next_scheduled_scan = today + timedelta(days=30)
                 elif site.scan_frequency == ScanFrequency.quarterly:
-                    site.next_scheduled_scan = now + timedelta(days=90)
+                    site.next_scheduled_scan = today + timedelta(days=90)
                 
-                site.last_periodic_scan_at = now
+                site.last_periodic_scan_at = today
                 
                 # IMPORTANT: Commit BEFORE triggering Celery task
                 # This ensures the scan_job exists in DB when worker tries to access it

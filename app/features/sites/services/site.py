@@ -154,16 +154,17 @@ async def update_site_scan_frequency(
         device_id=device_id
     )
     
-    # Calculate next scheduled scan time based on frequency
+    # Calculate next scheduled scan date based on frequency
     next_scheduled_scan = None
     if scan_frequency_enabled and scan_frequency != ScanFrequency.disabled:
-        now = datetime.utcnow()
+        from datetime import date
+        today = date.today()
         if scan_frequency == ScanFrequency.weekly:
-            next_scheduled_scan = now + timedelta(days=7)
+            next_scheduled_scan = today + timedelta(days=7)
         elif scan_frequency == ScanFrequency.monthly:
-            next_scheduled_scan = now + timedelta(days=30)
+            next_scheduled_scan = today + timedelta(days=30)
         elif scan_frequency == ScanFrequency.quarterly:
-            next_scheduled_scan = now + timedelta(days=90)
+            next_scheduled_scan = today + timedelta(days=90)
 
     
     # Update the site

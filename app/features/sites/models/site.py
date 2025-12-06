@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Enum, DateTime, UniqueConstraint, Index, Boolean, CheckConstraint
+from sqlalchemy import Column, String, Integer, ForeignKey, Enum, DateTime, Date, UniqueConstraint, Index, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
 from app.platform.db.base import BaseModel
 import enum
@@ -51,9 +51,9 @@ class Site(BaseModel):
 
     # Periodic scanning settings
     scan_frequency = Column(Enum(ScanFrequency), default=ScanFrequency.disabled, nullable=False)
-    scan_frequency_enabled = Column(Boolean, default=False, nullable=False)  # Quick toggle on/off
-    next_scheduled_scan = Column(DateTime, nullable=True)  # When the next periodic scan should run
-    last_periodic_scan_at = Column(DateTime, nullable=True)  # Last time a periodic scan was triggered
+    scan_frequency_enabled = Column(Boolean, default=False, nullable=False) 
+    next_scheduled_scan = Column(Date, nullable=True)  
+    last_periodic_scan_at = Column(Date, nullable=True)
 
     user = relationship("User", back_populates="sites")
 
